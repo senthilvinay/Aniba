@@ -1,0 +1,44 @@
+from openpyxl import load_workbook
+from openpyxl import Workbook
+import os
+
+def convert_multiple_excel_to_single(filename_list, output_filename):
+    """
+    Function to convert multiple Excel files into a single Excel file with different sheets.
+
+    Parameters:
+        - filename_list: List of filenames of the Excel files to be converted.
+        - output_filename: Filename for the output Excel file.
+    """
+    # Create a new workbook
+    wb = Workbook()
+
+    # Iterate over the list of filenames
+    for i, filename in enumerate(filename_list, start=1):
+        # Load the Excel file
+        excel_file = load_workbook(filename)
+        
+        # Create a new sheet in the output workbook
+        ws = wb.create_sheet(title=f"Sheet{i}")
+
+        # Copy data from the loaded Excel file to the new sheet
+        for sheet in excel_file.sheetnames:
+            source_ws = excel_file[sheet]
+            for row in source_ws.iter_rows(values_only=True):
+                ws.append(row)
+
+    # Remove the default sheet created by openpyxl
+    wb.remove(wb.active)
+
+    # Save the workbook to a file
+    wb.save(output_filename)
+    print(f"Excel file '{output_filename}' with {len(filename_list)} sheets created successfully.")
+
+# List of filenames of the Excel files to be converted
+filename_list = ['file1.xlsx', 'file2.xlsx', 'file3.xlsx']  # Add more filenames as needed
+
+# Filename for the output Excel file
+output_filename = 'merged_excel_file.xlsx'
+
+# Convert the multiple Excel files into a single Excel file with different sheets
+convert_multiple_excel_to_single(filename_list, output_filename)
