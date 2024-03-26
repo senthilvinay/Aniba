@@ -1,0 +1,105 @@
+from openpyxl import Workbook
+
+def create_excel_sheet(data, ws_title):
+    """
+    Function to create a single sheet in an Excel workbook and populate it with data.
+
+    Parameters:
+        - data: List of lists containing the data to populate the sheet.
+        - ws_title: Title for the worksheet.
+    """
+    # Create a new worksheet
+    ws = wb.create_sheet(title=ws_title)
+    
+    # Populate the worksheet with data
+    for row in data:
+        ws.append(row)
+
+def create_excel_report(datasets, filename):
+    """
+    Function to create an Excel report with multiple sheets.
+
+    Parameters:
+        - datasets: List of tuples containing data and titles for each sheet.
+        - filename: Filename for the Excel report.
+    """
+    # Create a new workbook
+    wb = Workbook()
+    
+    # Iterate over datasets and create sheets
+    for i, (data, title) in enumerate(datasets, start=1):
+        create_excel_sheet(data, title)
+    
+    # Remove the default sheet created by openpyxl
+    wb.remove(wb.active)
+    
+    # Save the workbook to a file
+    wb.save(filename)
+    print(f"Excel report '{filename}' with multiple sheets created successfully.")
+
+# File name for the Excel report
+filename = 'common_report.xlsx'
+
+# Create the Excel report with multiple sheets
+create_excel_report(datasets, filename)
+
+
+
+--------------------
+from openpyxl import Workbook
+
+def create_excel_report(datasets, filename):
+    """
+    Function to create an Excel report with multiple sheets.
+
+    Parameters:
+        - datasets: List of tuples containing data and titles for each sheet.
+        - filename: Filename for the Excel report.
+    """
+    # Create a new workbook
+    wb = Workbook()
+
+    # Iterate over datasets and create sheets
+    for i, (data, title) in enumerate(datasets, start=1):
+        # Create a new sheet for each dataset
+        ws = wb.create_sheet(title=title)
+
+        # Populate the worksheet with data
+        for row in data:
+            ws.append(row)
+
+    # Remove the default sheet created by openpyxl
+    wb.remove(wb.active)
+
+    # Save the workbook to a file
+    wb.save(filename)
+    print(f"Excel report '{filename}' with multiple sheets created successfully.")
+
+# Example datasets for multiple sheets (list of tuples containing data and titles)
+datasets = [
+    (
+        [
+            ['Name', 'Age', 'City'],
+            ['John', 30, 'New York'],
+            ['Alice', 25, 'London'],
+            ['Bob', 35, 'Paris']
+        ],
+        "Sheet1"
+    ),
+    (
+        [
+            ['ID', 'Product', 'Price'],
+            [101, 'Laptop', 1200],
+            [102, 'Phone', 800],
+            [103, 'Tablet', 500]
+        ],
+        "Sheet2"
+    ),
+    # Add more datasets as needed
+]
+
+# File name for the Excel report
+filename = 'common_report.xlsx'
+
+# Create the Excel report with multiple sheets
+create_excel_report(datasets, filename)
