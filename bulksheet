@@ -1,0 +1,36 @@
+from openpyxl import Workbook
+
+def create_excel_with_sheets_and_data(num_sheets, filename):
+    """
+    Function to create an Excel file with multiple sheets, each populated with sample data.
+
+    Parameters:
+        - num_sheets: Number of sheets to create.
+        - filename: Filename for the Excel file.
+    """
+    # Create a new workbook
+    wb = Workbook()
+
+    # Create the specified number of sheets
+    for i in range(num_sheets):
+        ws = wb.create_sheet(title=f"Sheet{i+1}")  # Sheet names start from 1
+        
+        # Populate each sheet with sample data
+        for row_num in range(1, 11):  # Populate 10 rows of sample data
+            ws.append([f"Sheet{i+1} Row {row_num} Data"])
+
+    # Remove the default sheet created by openpyxl
+    wb.remove(wb.active)
+
+    # Save the workbook to a file
+    wb.save(filename)
+    print(f"Excel file '{filename}' with {num_sheets} sheets and sample data created successfully.")
+
+# Number of sheets to create
+num_sheets = 10
+
+# File name for the Excel file
+filename = 'multiple_sheets_with_data.xlsx'
+
+# Create the Excel file with 10 sheets and sample data
+create_excel_with_sheets_and_data(num_sheets, filename)
