@@ -1,0 +1,36 @@
+from openpyxl import Workbook
+
+def create_excel_sheet(data, filename):
+    """
+    Function to create an Excel sheet from a list of lists.
+
+    Parameters:
+        - data: List of lists containing the data to populate the Excel sheet.
+        - filename: Filename for the Excel sheet.
+    """
+    # Create a new workbook
+    wb = Workbook()
+    # Select the active worksheet
+    ws = wb.active
+    
+    # Populate the worksheet with data
+    for row in data:
+        ws.append(row)
+    
+    # Save the workbook to a file
+    wb.save(filename)
+    print(f"Excel sheet '{filename}' created successfully.")
+
+# Example data (list of lists)
+data = [
+    ['Name', 'Age', 'City'],
+    ['John', 30, 'New York'],
+    ['Alice', 25, 'London'],
+    ['Bob', 35, 'Paris']
+]
+
+# Filename for the Excel sheet
+filename = 'data.xlsx'
+
+# Create the Excel sheet
+create_excel_sheet(data, filename)
