@@ -1,0 +1,42 @@
+import teradatasql
+
+def execute_query_with_date_parameters(query, params, conn_str):
+    """
+    Function to execute an SQL query with date parameters.
+
+    Parameters:
+        - query: SQL query with placeholders for the date parameters.
+        - params: Dictionary containing the parameter values.
+        - conn_str: Connection string for the Teradata database.
+    """
+    # Connect to the Teradata database
+    with teradatasql.connect(conn_str) as conn:
+        with conn.cursor() as cur:
+            try:
+                # Execute the query with the parameters
+                cur.execute(query, params)
+                
+                # Fetch the results
+                rows = cur.fetchall()
+                
+                # Print the results
+                for row in rows:
+                    print(row)
+                    
+                # If you want to print column names
+                column_names = [desc[0] for desc in cur.description]
+                print("Column names:", column_names)
+            except teradatasql.Error as e:
+                print("Error executing query:", e)
+
+# Example SQL query with parameterized variables for start date and end date
+query = "SELECT * FROM your_table WHERE date_column BETWEEN :start_date AND :end_date"
+
+# Example parameters dictionary with start_date and end_date
+params = {'start_date': '2022-01-01', 'end_date': '2022-12-31'}
+
+# Example connection string (replace with your actual Teradata connection details)
+conn_str = "Driver={Teradata Driver};DBCName=your_host;Database=your_database;UID=your_user;PWD=your_password;"
+
+# Execute the query with the parameters
+execute_query_with_date_parameters(query, params, conn_str)
