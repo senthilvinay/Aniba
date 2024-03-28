@@ -1,0 +1,14 @@
+from decimal import Decimal
+
+# Example list of lists containing Decimal objects
+decimal_list = [
+    [Decimal('1534'), Decimal('2324'), 3.7],
+    [Decimal('1534'), Decimal('2324'), 3.7],
+    [Decimal('1534'), Decimal('2324'), 3.7]
+]
+
+# Convert Decimal objects to integer values
+integer_list = [[int(x) if isinstance(x, Decimal) else x for x in sublist] for sublist in decimal_list]
+
+# Print the result
+print(integer_list)
