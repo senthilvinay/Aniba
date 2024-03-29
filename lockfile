@@ -29,3 +29,10 @@ if check_lock_file_exists(lock_file_path):
     print("Lock file exists.")
 else:
     print("Lock file does not exist.")
+
+
+
+
+
+#********************
+import os; os.remove('/var/tmp/lock_file.lock') if os.path.exists('/var/tmp/lock_file.lock') else None
