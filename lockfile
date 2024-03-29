@@ -1,0 +1,16 @@
+import os
+
+def create_lock_file(lock_file_path):
+    try:
+        # Create the lock file
+        with open(lock_file_path, 'w') as lock_file:
+            lock_file.write('')
+        print("Lock file created successfully.")
+    except Exception as e:
+        print("Error creating lock file:", e)
+
+# Specify the path for the lock file
+lock_file_path = 'lock_file.lock'
+
+# Create the lock file
+create_lock_file(lock_file_path)
