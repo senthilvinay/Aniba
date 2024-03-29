@@ -1,0 +1,13 @@
+import os
+
+def check_lock_file_exists(lock_file_path):
+    return os.path.exists(lock_file_path)
+
+# Specify the path for the lock file
+lock_file_path = 'lock_file.lock'
+
+# Check if the lock file exists
+if check_lock_file_exists(lock_file_path):
+    print("Lock file exists.")
+else:
+    print("Lock file does not exist.")
