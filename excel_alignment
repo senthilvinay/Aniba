@@ -1,0 +1,46 @@
+import pandas as pd
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
+
+def format_excel_sheets(input_file, output_file):
+    """
+    Function to format multiple sheets in an Excel file with proper alignment and column color.
+    
+    Parameters:
+        input_file (str): Path to the input Excel file.
+        output_file (str): Path to the output Excel file.
+    """
+    # Load the Excel file
+    xls = pd.ExcelFile(input_file)
+    
+    # Create a Pandas Excel writer
+    with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
+        # Write each sheet with proper alignment and column color
+        for sheet_name in xls.sheet_names:
+            # Read the data from the current sheet
+            df = pd.read_excel(xls, sheet_name)
+            
+            # Write the data to the Excel writer
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+            
+            # Access the workbook and worksheet objects
+            workbook = writer.book
+            worksheet = workbook[sheet_name]
+
+            # Set proper alignment for each column
+            for column_cells in worksheet.columns:
+                max_length = max(len(str(cell.value)) for cell in column_cells)
+                adjusted_width = (max_length + 2) * 1.2
+                worksheet.column_dimensions[column_cells[0].column_letter].width = adjusted_width
+            
+            # Add column color (alternating colors)
+            for idx, col in enumerate(worksheet.columns, 1):
+                fill_color = "FFC7CE" if idx % 2 == 0 else "FFD966"
+                fill = PatternFill(start_color=fill_color, end_color=fill_color, fill_type="solid")
+                for cell in col:
+                    cell.fill = fill
+    
+    print(f"Formatted Excel file saved to '{output_file}'.")
+
+# Example usage:
+format_excel_sheets("input_file.xlsx", "formatted_output.xlsx")
