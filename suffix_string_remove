@@ -1,0 +1,18 @@
+import re
+
+def remove_suffix_number(filename):
+    # Define pattern for suffix number
+    suffix_pattern = r'_\d+$'
+    
+    # Remove suffix number
+    filename = re.sub(suffix_pattern, '', filename)
+    
+    return filename
+
+# Example string
+filename = "stmt_m_formatted_output123.xlsx"
+
+# Apply the function
+output_filename = remove_suffix_number(filename)
+
+print(output_filename)
