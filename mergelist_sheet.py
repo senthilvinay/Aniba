@@ -137,3 +137,9 @@ df = pd.DataFrame(extended_list)
 
 # Display the DataFrame
 print(df)
+##################################
+flat_list = [item for sublist in list_detail for item in sublist]
+max_length = max(len(sublist) for sublist in flat_list)
+extended_list = [sublist + [''] * (max_length - len(sublist)) for sublist in flat_list]
+
+
