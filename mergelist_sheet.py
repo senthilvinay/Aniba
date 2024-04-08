@@ -113,5 +113,27 @@ list_detail = [[['a', 'b', 'c', 'd', 'e'],
 # Flatten each inner list
 row_list = [item for sublist in list_detail for item in sublist]
 
+
 # Display the row list
 print(row_list)
+###############################
+
+import pandas as pd
+import numpy as np
+
+# Given list of lists
+list_detail = [[['a', 'b', 'c', 'd', 'e'],
+                [12, 24, 25, 3, 35],
+                [12, 24, 25, 3, 35]],
+               [['A', 'B'], [23, 45], [34, 56]]]
+
+# Flatten each inner list and fill up NaN values
+flat_list = [item for sublist in list_detail for item in sublist]
+max_length = max(len(sublist) for sublist in flat_list)
+extended_list = [sublist + [np.nan] * (max_length - len(sublist)) for sublist in flat_list]
+
+# Convert the modified list of lists to a DataFrame
+df = pd.DataFrame(extended_list)
+
+# Display the DataFrame
+print(df)
