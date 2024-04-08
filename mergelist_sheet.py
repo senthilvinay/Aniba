@@ -79,3 +79,26 @@ padded_list = [sublist + [None] * (num_columns - len(sublist)) for sublist in li
 df = pd.DataFrame(padded_list, columns=[f'Column_{i+1}' for i in range(num_columns)])
 
 print(df)
+#################################################
+
+import pandas as pd
+import numpy as np
+
+# Given list of lists
+list_detail = [[['a', 'b', 'c', 'd', 'e'],
+                [12, 24, 25, 3, 35],
+                [12, 24, 25, 3, 35]],
+               [['A', 'B'], [23, 45], [34, 56]]]
+
+# Determine the maximum length among all inner lists
+max_length = max(len(sublist) for sublist in list_detail[0] + list_detail[1])
+
+# Extend each inner list with NaN values to match the maximum length
+extended_list = [sublist + [np.nan] * (max_length - len(sublist)) for sublist in list_detail[0]]
+extended_list += [sublist + [np.nan] * (max_length - len(sublist)) for sublist in list_detail[1]]
+
+# Reshape the extended list of lists to have the same structure as the original list_detail
+reshaped_list = [extended_list[i:i+len(list_detail[0][0])] for i in range(0, len(extended_list), len(list_detail[0][0]))]
+
+# Convert the reshaped list of lists to a DataFrame
+df = pd.DataFrame(reshaped_list)
