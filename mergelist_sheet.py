@@ -56,3 +56,26 @@ combined_data = combine_lists_to_dataframe([list1, list2, list3], headings)
 combined_data.to_excel("output.xlsx", index=False)
 
 print("Combined data written to output.xlsx")
+
+###########################
+import pandas as pd
+
+# Given list of lists
+list_detail = [['a', 'b', 'c', 'd', 'e'],
+               [12, 24, 25, 3, 35],
+               [12, 24, 25, 3, 35],
+               [['A', 'B'], [23, 45], [34, 56]]]
+
+# Flatten the nested list
+flattened_list = [item for sublist in list_detail for item in sublist]
+
+# Determine the number of columns based on the length of the first sublist
+num_columns = len(list_detail[0])
+
+# Ensure all sublists have the same length by padding with None
+padded_list = [sublist + [None] * (num_columns - len(sublist)) for sublist in list_detail]
+
+# Create a DataFrame
+df = pd.DataFrame(padded_list, columns=[f'Column_{i+1}' for i in range(num_columns)])
+
+print(df)
