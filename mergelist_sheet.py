@@ -102,3 +102,16 @@ reshaped_list = [extended_list[i:i+len(list_detail[0][0])] for i in range(0, len
 
 # Convert the reshaped list of lists to a DataFrame
 df = pd.DataFrame(reshaped_list)
+
+#####################################
+# Given list of lists
+list_detail = [[['a', 'b', 'c', 'd', 'e'],
+                [12, 24, 25, 3, 35],
+                [12, 24, 25, 3, 35]],
+               [['A', 'B'], [23, 45], [34, 56]]]
+
+# Flatten each inner list
+row_list = [item for sublist in list_detail for item in sublist]
+
+# Display the row list
+print(row_list)
