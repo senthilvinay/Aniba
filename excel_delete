@@ -1,0 +1,22 @@
+import os
+
+# Directory containing the Excel files
+directory = '/path/to/directory'
+
+# Name of the file you want to keep
+file_to_keep = 'keep_this_file.xlsx'
+
+# List all Excel files in the directory
+excel_files = [f for f in os.listdir(directory) if f.endswith('.xlsx')]
+
+# Filter out the file to keep
+excel_files_to_delete = [f for f in excel_files if f != file_to_keep]
+
+# Delete the files
+for file in excel_files_to_delete:
+    file_path = os.path.join(directory, file)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        print(f"Deleted: {file_path}")
+    else:
+        print(f"File does not exist: {file_path}")
