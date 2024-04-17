@@ -1,0 +1,8 @@
+# Example list of lists
+my_list = [['Hello'], [None], []]
+
+# Filter out None elements and empty lists
+filtered_list = [sublist for sublist in my_list if sublist != [] and sublist != [None]]
+
+print("Filtered list:")
+print(filtered_list)
