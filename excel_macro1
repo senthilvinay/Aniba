@@ -1,0 +1,30 @@
+Sub SplitDescriptionToColumns()
+    Dim ws As Worksheet
+    Dim rng As Range
+    Dim cell As Range
+    Dim parts As Variant
+    Dim subparts As Variant
+    Dim i As Long, j As Long
+    
+    ' Set the worksheet and range
+    Set ws = ThisWorkbook.Sheets("Sheet1") ' Change "Sheet1" to your sheet name
+    Set rng = ws.Range("A2:A" & ws.Cells(ws.Rows.Count, "A").End(xlUp).Row) ' Adjust "A2:A" if necessary
+
+    ' Loop through each cell in the range
+    For Each cell In rng
+        ' Split the string by commas
+        parts = Split(cell.Value, ",")
+        
+        ' Loop through each part
+        For i = LBound(parts) To UBound(parts)
+            ' Split each part by the equals sign
+            subparts = Split(parts(i), "=")
+            
+            ' Place the value in the appropriate column
+            If UBound(subparts) > 0 Then
+                cell.Offset(0, i + 1).Value = subparts(1)
+            End If
+        Next i
+    Next cell
+End Sub
+###########################
