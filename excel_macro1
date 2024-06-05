@@ -56,3 +56,37 @@ Sub SplitLongDescription()
         Next i
     Next cell
 End Sub
+###########################
+Sub SplitIssueString()
+    Dim ws As Worksheet
+    Dim lastRow As Long
+    Dim cell As Range
+    Dim splitParts As Variant
+    Dim i As Long
+    
+    ' Set the worksheet and find the last row with data in column A
+    Set ws = ThisWorkbook.Sheets("Sheet1") ' Change Sheet1 to your sheet name
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+
+    ' Add headers for the new columns
+    ws.Range("B1").Value = "Issuewith"
+    ws.Range("C1").Value = "IssueDescription"
+    ws.Range("D1").Value = "Version"
+    
+    ' Loop through each cell in column A
+    For Each cell In ws.Range("A2:A" & lastRow) ' Assuming data starts from row 2
+        If Left(cell.Value, 5) = "Issue" Then
+            ' Split the string by the equal sign and new lines
+            splitParts = Split(cell.Value, vbCrLf)
+            For i = LBound(splitParts) To UBound(splitParts)
+                If InStr(splitParts(i), "Issuewith=") > 0 Then
+                    ws.Cells(cell.Row, "B").Value = Split(splitParts(i), "=")(1)
+                ElseIf InStr(splitParts(i), "IssueDescription=") > 0 Then
+                    ws.Cells(cell.Row, "C").Value = Split(splitParts(i), "=")(1)
+                ElseIf InStr(splitParts(i), "version=") > 0 Then
+                    ws.Cells(cell.Row, "D").Value = Split(splitParts(i), "=")(1)
+                End If
+            Next i
+        End If
+    Next cell
+End Sub
