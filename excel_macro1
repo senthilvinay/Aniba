@@ -28,3 +28,31 @@ Sub SplitDescriptionToColumns()
     Next cell
 End Sub
 ###########################
+Sub SplitLongDescription()
+    Dim ws As Worksheet
+    Dim lastRow As Long
+    Dim sourceCol As String
+    Dim destCol As Long
+    Dim cell As Range
+    Dim parts As Variant
+    Dim i As Integer
+
+    ' Define the worksheet and columns
+    Set ws = ThisWorkbook.Sheets("Sheet1") ' Change "Sheet1" to your sheet name
+    sourceCol = "A" ' Column with the long description
+    destCol = 2 ' Starting column for the split data (B)
+
+    ' Find the last row in the source column
+    lastRow = ws.Cells(ws.Rows.Count, sourceCol).End(xlUp).Row
+
+    ' Loop through each cell in the source column
+    For Each cell In ws.Range(sourceCol & "1:" & sourceCol & lastRow)
+        ' Split the cell content by "="
+        parts = Split(cell.Value, "=")
+        
+        ' Loop through each part and place it in the corresponding column
+        For i = LBound(parts) To UBound(parts)
+            ws.Cells(cell.Row, destCol + i).Value = parts(i)
+        Next i
+    Next cell
+End Sub
