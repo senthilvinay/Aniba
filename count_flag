@@ -1,0 +1,12 @@
+# Initialize the count
+completed_count = 0
+
+# Iterate over each key in the dictionary
+for key, values in dict1.items():
+    # Iterate over each value in the list associated with the key
+    for value in values:
+        # Check if the value is 'COMPLETED'
+        if value == 'COMPLETED':
+            completed_count += 1
+
+print("Count of 'COMPLETED' status:", completed_count)
