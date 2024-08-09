@@ -158,3 +158,36 @@ Sub ExtractKeyValuePairs()
         End If
     Next cell
 End Sub
+
+--------------------------------------------------------------------
+Sub TransformKeyValuePairs()
+    Dim ws As Worksheet
+    Dim Key As String, Value As String
+    Dim KeyValueArray() As String
+    Dim LastRow As Long, LastCol As Long
+    Dim i As Long, j As Long
+    Dim KeyDictionary As Object
+    
+    Set ws = ThisWorkbook.Sheets("Sheet1") ' Change "Sheet1" to your sheet name
+    Set KeyDictionary = CreateObject("Scripting.Dictionary")
+    
+    LastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    
+    ' Loop through column A to extract key-value pairs
+    For i = 1 To LastRow
+        KeyValueArray = Split(ws.Cells(i, 1).Value, "=")
+        If UBound(KeyValueArray) = 1 Then
+            Key = Trim(KeyValueArray(0))
+            Value = Trim(KeyValueArray(1))
+            If Not KeyDictionary.exists(Key) Then
+                KeyDictionary.Add Key, Key
+                ws.Cells(1, KeyDictionary.Count).Value = Key
+            End If
+            ws.Cells(2, KeyDictionary(Key)).Value = Value
+        End If
+    Next i
+    
+    ' Autofit the columns for better visibility
+    ws.Columns.AutoFit
+End Sub
+
