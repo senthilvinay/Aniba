@@ -90,3 +90,29 @@ Sub SplitIssueString()
         End If
     Next cell
 End Sub
+
+------------------------------------------------
+Sub ExtractValues()
+    Dim ws As Worksheet
+    Set ws = ThisWorkbook.Sheets(1) ' Change the sheet number if needed
+
+    Dim LastRow As Long
+    LastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+
+    Dim headers As Object
+    Set headers = CreateObject("Scripting.Dictionary")
+
+    Dim i As Long
+    For i = 1 To LastRow
+        Dim parts() As String
+        parts = Split(ws.Cells(i, 1).Value, "=")
+        
+        If UBound(parts) = 1 Then
+            If Not headers.exists(parts(0)) Then
+                headers(parts(0)) = headers.Count + 1
+                ws.Cells(1, headers.Count + 1).Value = parts(0)
+            End If
+            ws.Cells(i + 1, headers(parts(0)) + 1).Value = parts(1)
+        End If
+    Next i
+End Sub
