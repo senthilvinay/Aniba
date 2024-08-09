@@ -116,3 +116,45 @@ Sub ExtractValues()
         End If
     Next i
 End Sub
+----------------------------------------------------------------
+Sub ExtractKeyValuePairs()
+    Dim ws As Worksheet
+    Dim lastRow As Long
+    Dim keyValue As Variant
+    Dim key As String
+    Dim value As String
+    Dim colIndex As Integer
+    Dim cell As Range
+    
+    Set ws = ThisWorkbook.Sheets("Sheet1") ' Change "Sheet1" to your sheet name
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    colIndex = 1
+    
+    ' Clear previous results
+    ws.Rows(1).Clear
+    
+    ' Iterate through each cell in column A
+    For Each cell In ws.Range("A1:A" & lastRow)
+        If cell.Value <> "" Then
+            keyValue = Split(cell.Value, "=")
+            If UBound(keyValue) = 1 Then
+                key = keyValue(0)
+                value = keyValue(1)
+                
+                ' Find the column index for the key
+                On Error Resume Next
+                colIndex = Application.Match(key, ws.Rows(1), 0)
+                On Error GoTo 0
+                
+                ' If key not found, add to the next column
+                If IsError(colIndex) Then
+                    colIndex = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column + 1
+                    ws.Cells(1, colIndex).Value = key
+                End If
+                
+                ' Add value to the corresponding column
+                ws.Cells(cell.Row + 1, colIndex).Value = value
+            End If
+        End If
+    Next cell
+End Sub
