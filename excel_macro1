@@ -214,7 +214,7 @@ Sub ConvertMultiLineToSingleString()
     Next cell
 End Sub
 
-        ' Update the cell with the new value
+        ' XXXXXXXXXXXXXX Update the cell with the new value
         cell.Value = newValue
     Next cell
 End Sub
