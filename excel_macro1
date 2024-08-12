@@ -190,4 +190,21 @@ Sub TransformKeyValuePairs()
     ' Autofit the columns for better visibility
     ws.Columns.AutoFit
 End Sub
+##################################################
+Sub ConvertMultiLinesToSingleString()
+    Dim rng As Range
+    Dim cell As Range
+    Dim newValue As String
+    
+    ' Set the range to the selection
+    Set rng = Selection
+    
+    ' Loop through each cell in the selected range
+    For Each cell In rng
+        ' Replace line breaks with spaces
+        newValue = Replace(cell.Value, Chr(10), " ")
+        ' Update the cell with the new value
+        cell.Value = newValue
+    Next cell
+End Sub
 
