@@ -191,18 +191,29 @@ Sub TransformKeyValuePairs()
     ws.Columns.AutoFit
 End Sub
 ##################################################
-Sub ConvertMultiLinesToSingleString()
-    Dim rng As Range
+Sub ConvertMultiLineToSingleString()
+    Dim ws As Worksheet
     Dim cell As Range
-    Dim newValue As String
+    Dim multiLineText As String
+    Dim singleLineText As String
     
-    ' Set the range to the selection
-    Set rng = Selection
+    ' Set the worksheet (change "Sheet1" to your sheet name if necessary)
+    Set ws = ThisWorkbook.Sheets("Sheet1")
     
-    ' Loop through each cell in the selected range
-    For Each cell In rng
-        ' Replace line breaks with spaces
-        newValue = Replace(cell.Value, Chr(10), " ")
+    ' Loop through each cell in column A
+    For Each cell In ws.Range("A1:A" & ws.Cells(ws.Rows.Count, "A").End(xlUp).Row)
+        ' Check if the cell is not empty
+        If Not IsEmpty(cell.Value) Then
+            ' Read the multi-line text
+            multiLineText = cell.Value
+            ' Replace line breaks with a space (or any other delimiter you prefer)
+            singleLineText = Replace(multiLineText, Chr(10), " ")
+            ' Replace the cell value with the single-line text
+            cell.Value = singleLineText
+        End If
+    Next cell
+End Sub
+
         ' Update the cell with the new value
         cell.Value = newValue
     Next cell
