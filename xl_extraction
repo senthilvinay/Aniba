@@ -33,3 +33,43 @@ df = convert_to_dataframe(input_data)
 
 # Display the DataFrame
 print(df)
+
+
+
+#######################################################################################
+# Raw input as a multiline string
+input_data = """
+name:senthil
+dept:JAWS
+place:Alpharetta
+
+name:senthilkumar
+dept:JAWSsssss
+place:Banglore
+"""
+
+# Split the input data into blocks, each representing one dictionary
+blocks = input_data.strip().split('\n\n')
+
+# Initialize an empty list to store the dictionaries
+list_of_dicts = []
+
+# Iterate over each block and convert it to a dictionary
+for block in blocks:
+    # Split each block into key-value pairs
+    lines = block.split('\n')
+    
+    # Create a dictionary for the current block
+    current_dict = {}
+    
+    for line in lines:
+        # Split each line into a key and value
+        key, value = line.split(':')
+        current_dict[key.strip()] = value.strip()
+    
+    # Append the dictionary to the list
+    list_of_dicts.append(current_dict)
+
+# Print the resulting list of dictionaries
+print(list_of_dicts)
+
