@@ -1,0 +1,35 @@
+import pandas as pd
+
+# Function to convert structured input to a DataFrame
+def convert_to_dataframe(data):
+    # Initialize empty lists to store the data
+    names = []
+    depts = []
+    places = []
+    
+    # Iterate over the input data and append to respective lists
+    for entry in data:
+        names.append(entry['name'])
+        depts.append(entry['dept'])
+        places.append(entry['place'])
+    
+    # Create a DataFrame using the lists
+    df = pd.DataFrame({
+        'name': names,
+        'dept': depts,
+        'place': places
+    })
+    
+    return df
+
+# Example input data
+input_data = [
+    {'name': 'senthil', 'dept': 'JAWS', 'place': 'Alpharetta'},
+    {'name': 'senthilkumar', 'dept': 'JAWSsssss', 'place': 'Banglore'}
+]
+
+# Convert to DataFrame
+df = convert_to_dataframe(input_data)
+
+# Display the DataFrame
+print(df)
