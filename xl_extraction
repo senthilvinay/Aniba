@@ -84,4 +84,30 @@ selected_columns = df.iloc[:, [0, 3]]
 
 # Display the extracted columns
 print(selected_columns)
+#####################################################################
+input_string = """name:senthil
+description:sfjhkjsdfhskdjfhsjkdfhsdjkfhsjkdfhksdfh skldf  sfhskdfhskdfhskdlfs dfh lkesdfhsflksdfh klshflksdfhslk dfhksldfh sdklhfsdlkfh eklfhslkfhs dlkfhslkf selkfh sldkfh sdlkfhs dlfh sl
+dksfhskdf sdkfhsfh sdfkhs dkfhsdfl sdkhfsdkfhsdfg lijhselkfj dsfd flsdjf sdlfj sdlf jsdf dsf dsf sdf
+dept:JAWS"""
+
+# Split input string into lines
+lines = input_string.splitlines()
+
+# Initialize an empty dictionary
+result_dict = {}
+
+# Iterate through each line and process it
+current_key = None
+for line in lines:
+    if ':' in line:
+        # Split at the first occurrence of ':'
+        key, value = line.split(':', 1)
+        result_dict[key.strip()] = value.strip()
+        current_key = key.strip()
+    else:
+        # If no colon is found, append to the current key's value (for multiline description)
+        result_dict[current_key] += " " + line.strip()
+
+print(result_dict)
+
 
