@@ -72,4 +72,16 @@ for block in blocks:
 
 # Print the resulting list of dictionaries
 print(list_of_dicts)
+#########################
+import pandas as pd
+
+# Read the Excel file
+df = pd.read_excel('your_file.xlsx')
+
+# Extract the 1st and 4th columns (Python uses 0-based indexing)
+# Use .iloc to select columns by their position
+selected_columns = df.iloc[:, [0, 3]]
+
+# Display the extracted columns
+print(selected_columns)
 
