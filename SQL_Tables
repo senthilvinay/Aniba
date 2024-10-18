@@ -1,0 +1,98 @@
+from flask import Flask, render_template, request
+import pyodbc
+from sqlalchemy import create_engine, text
+
+app = Flask(__name__)
+
+# Database connection string
+server_conn_str = 'mssql+pyodbc://username:password@server/database?driver=SQL+Server'
+
+# Create SQLAlchemy engine connection
+engine = create_engine(server_conn_str)
+
+# Function to query the SQL Server table based on optional filter criteria
+def get_data_from_server(filter_column=None, filter_value=None):
+    query = "SELECT * FROM table_name"  # Adjust 'table_name' to your actual table
+    
+    if filter_column and filter_value:
+        query += f" WHERE {filter_column} = :value"
+    
+    with engine.connect() as connection:
+        result = connection.execute(text(query), {'value': filter_value})
+        rows = result.fetchall()
+        return [dict(row) for row in rows]
+
+# Route to display the SQL data in a Bootstrap-styled HTML table
+@app.route('/table')
+def table_view():
+    # Extract filter criteria from URL parameters (if any)
+    filter_column = request.args.get('filter_column')
+    filter_value = request.args.get('filter_value')
+
+    # Fetch data from the server
+    data = get_data_from_server(filter_column, filter_value)
+
+    # Render the result in a Bootstrap table
+    return render_template('table.html', data=data, filter_column=filter_column, filter_value=filter_value)
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL Table View</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="mb-4">SQL Table Data</h1>
+
+        <form method="get" action="/table" class="mb-4">
+            <div class="row">
+                <div class="col-md-4">
+                    <input type="text" class="form-control" name="filter_column" placeholder="Filter Column" value="{{ filter_column }}">
+                </div>
+                <div class="col-md-4">
+                    <input type="text" class="form-control" name="filter_value" placeholder="Filter Value" value="{{ filter_value }}">
+                </div>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-primary">Filter</button>
+                </div>
+            </div>
+        </form>
+
+        <table class="table table-striped table-bordered">
+            <thead class="thead-dark">
+                <tr>
+                    {% if data %}
+                        {% for key in data[0].keys() %}
+                            <th>{{ key }}</th>
+                        {% endfor %}
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% if data %}
+                    {% for row in data %}
+                        <tr>
+                            {% for value in row.values() %}
+                                <td>{{ value }}</td>
+                            {% endfor %}
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="100%">No data available.</td>
+                        </tr>
+                    {% endfor %}
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
