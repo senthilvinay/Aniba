@@ -1,0 +1,3 @@
+excel_count
+
+=INDEX(A:A, MATCH(MIN(COUNTIF(A:A, A:A)), COUNTIF(A:A, A:A), 0))
