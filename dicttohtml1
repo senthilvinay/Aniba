@@ -1,0 +1,94 @@
+# Dictionary
+Dict = {
+    'one': 'deployment completed',
+    'two': 'deployment completed',
+    'three': 'deployment completed',
+    'four': 'deployment completed',
+    'five': 'deployment completed'
+}
+
+# Generate HTML content
+html_content = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Deployment Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f9f9f9;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .container {
+            width: 75%;
+            margin: auto;
+            background: #ffffff;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .header {
+            background-color: #4CAF50;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            font-size: 24px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #f4f4f4;
+        }
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">Deployment Report</div>
+        <table>
+            <tr>
+                <th>S.No</th>
+                <th>Key</th>
+                <th>Status</th>
+            </tr>
+"""
+
+s_no = 1
+for key, value in Dict.items():
+    html_content += f"""
+            <tr>
+                <td>{s_no}</td>
+                <td>{key}</td>
+                <td>{value}</td>
+            </tr>
+    """
+    s_no += 1
+
+html_content += """
+        </table>
+    </div>
+</body>
+</html>
+"""
+
+# Save the HTML content to a file
+output_file = "deployment_report.html"
+with open(output_file, "w") as file:
+    file.write(html_content)
+
+print(f"HTML report has been generated and saved as {output_file}.")
