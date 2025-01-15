@@ -1,0 +1,74 @@
+# Generate HTML content
+html_content = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Deployment Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f9f9f9;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .container {
+            width: 80%;
+            max-width: 800px;
+            margin: auto;
+            background: #ffffff;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .header {
+            background-color: #4CAF50;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            font-size: 24px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f4f4f4;
+        }
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">Deployment Report</div>
+        <table>
+            <tr>
+                <th>Key</th>
+                <th>Status</th>
+            </tr>
+"""
+
+for key, value in Dict.items():
+    html_content += f"""
+            <tr>
+                <td>{key}</td>
+                <td>{value}</td>
+            </tr>
+    """
+
+html_content += """
+        </table>
+    </div>
+</body>
+</html>
+"""
