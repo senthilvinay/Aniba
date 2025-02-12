@@ -1,0 +1,14 @@
+{
+  "clusters": [
+    "app34.dd.k8s.na.ms.com",
+    "app35.dd.k8s.na.ms.com",
+    "app36.dd.k8s.na.ms.com"
+  ],
+  "deployment_id": "wm-10168",
+  "wait_time": 360,
+  "email": {
+    "subject": "PNSRT MKS Deployment Restart Status",
+    "receiver": "senthil.vinayagam@morganstanley.com",
+    "sender": "pnstr-dev@morganstanley.com"
+  }
+}
