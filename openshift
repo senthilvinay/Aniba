@@ -1,0 +1,50 @@
+import json
+import time
+
+# Load configuration from JSON file
+with open('config.json', 'r') as file:
+    config = json.load(file)
+
+def login_mks_cluster(cluster_name):
+    # Function implementation
+    pass
+
+def get_pods(deployment_id):
+    # Function implementation
+    pass
+
+def get_deployments(deployment_id):
+    # Function implementation
+    pass
+
+def restart_aspc(deployment_id):
+    # Function implementation
+    pass
+
+def logout_mks_cluster(cluster_name):
+    # Function implementation
+    pass
+
+def get_deployment_status(deployment_id):
+    # Function implementation
+    pass
+
+def send(status, subject, receiver, sender):
+    # Function implementation
+    pass
+
+# Example usage
+for cluster in config['clusters']:
+    print(login_mks_cluster(cluster))
+
+print(get_pods(config['deployment_id']))
+print(get_deployments(config['deployment_id']))
+print(restart_aspc(config['deployment_id']))
+time.sleep(config['wait_time'])
+print(logout_mks_cluster(config['clusters'][0]))
+
+dep_status = report_conversion(get_deployment_status(config['deployment_id']))
+print(get_deployment_status(config['deployment_id']))
+print(dep_status)
+
+send(dep_status, "DEV INSTANCE-TESTING:" + config['email']['subject'], config['email']['receiver'], config['email']['sender'])
