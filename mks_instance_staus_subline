@@ -1,0 +1,23 @@
+import json
+
+# Extracted JSON text
+extracted_text = '''
+[
+    {"name":"pnsrt-cinema-qa-dep-6d76d75899-55cmf1","status":"Running"},
+    {"name":"pnsrt-cinema-qa-dep-6d76d75899-55cmf2","status":"Running"},
+    {"name":"pnsrt-cinema-qa-dep-6d76d75899-55cmf3","status":"Running"},
+    {"name":"pnsrt-cinema-qa-dep-6d76d75899-55cmf5","status":"Running"},
+    {"name":"pnsrt-cinema-qa-dep-6d76d75899-55cmf6","status":"Running"},
+    {"name":"pnsrt-cinema-qa-dep-6d76d75899-55cmf7","status":"Running"},
+    {"name":"pnsrt-cinema-qa-dep-6d76d75899-5k61f8","status":"Running"}
+]
+'''
+
+# Parse the JSON data
+data = json.loads(extracted_text)
+
+# One-liner to set the status flag
+status_flag = "RED" if any(item["status"] != "Running" for item in data) else "GREEN"
+
+# Print the status flag
+print("Status Flag:", status_flag)
