@@ -1,0 +1,65 @@
+import re
+import xml.etree.ElementTree as ET
+
+def parse_plantuml(plantuml_text):
+    classes = {}
+    relationships = []
+    
+    lines = plantuml_text.splitlines()
+    class_pattern = re.compile(r'class\s+(\w+)')
+    relationship_pattern = re.compile(r'(\w+)\s+([<>\|-]+)\s+(\w+)')
+    
+    for line in lines:
+        line = line.strip()
+        
+        class_match = class_pattern.match(line)
+        if class_match:
+            class_name = class_match.group(1)
+            classes[class_name] = []
+            continue
+        
+        attr_match = re.match(r'\s+(\w+)\s*:\s*(\w+)', line)
+        if attr_match and classes:
+            attr_name, attr_type = attr_match.groups()
+            last_class = list(classes.keys())[-1]
+            classes[last_class].append((attr_name, attr_type))
+            continue
+        
+        relationship_match = relationship_pattern.match(line)
+        if relationship_match:
+            entity1, relation, entity2 = relationship_match.groups()
+            relationships.append((entity1, relation, entity2))
+    
+    return classes, relationships
+
+def convert_to_xml(classes, relationships):
+    root = ET.Element("PlantUML")
+    
+    classes_element = ET.SubElement(root, "Classes")
+    for class_name, attributes in classes.items():
+        class_element = ET.SubElement(classes_element, "Class", name=class_name)
+        for attr_name, attr_type in attributes:
+            ET.SubElement(class_element, "Attribute", name=attr_name, type=attr_type)
+    
+    relationships_element = ET.SubElement(root, "Relationships")
+    for entity1, relation, entity2 in relationships:
+        ET.SubElement(relationships_element, "Relationship", entity1=entity1, relation=relation, entity2=entity2)
+    
+    return ET.tostring(root, encoding="unicode")
+
+def plantuml_to_xml(file_path):
+    with open(file_path, 'r') as file:
+        plantuml_text = file.read()
+    
+    classes, relationships = parse_plantuml(plantuml_text)
+    xml_output = convert_to_xml(classes, relationships)
+    
+    output_file = file_path.replace(".puml", ".xml")
+    with open(output_file, 'w') as file:
+        file.write(xml_output)
+    
+    print(f"XML file generated: {output_file}")
+
+# Example usage
+if __name__ == "__main__":
+    plantuml_to_xml("example.puml")
