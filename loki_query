@@ -1,0 +1,11 @@
+{job="log-10885-nonprod", app="zqebcsm.wmedm-ebcsecuritymasterloader-qa-ddwm"}
+|= "Message: SOR"
+| regexp `(?P<messageType>\w+) Message: SOR`
+| regexp `published Timestamp: (?P<sorMessageTS>\d+\/\d+\/\d+\s\d+:\d+:\d+)`
+| regexp `updated Timestamp: (?P<rosMessageTS>\d+\/\d+\/\d+\s\d+:\d+:\d+)`
+| unwrap sorMessageTS | unwrap rosMessageTS
+| parse_time sorMessageTS, "01/02/2006 15:04:05" as sorTime
+| parse_time rosMessageTS, "01/02/2006 15:04:05" as rosTime
+| duration(sorTime, rosTime) as timeLag
+| line_format "{{.unique_id}}, {{.messageType}}, {{.sorTime}}, {{.rosTime}}, {{.timeLag}}"
+| stats count(), avg(timeLag), quantile(0.90, timeLag) by (messageType)
