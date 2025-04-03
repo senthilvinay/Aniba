@@ -1,0 +1,10 @@
+sum by(group, topic) (
+    kafka_consumergroup_group_topic_sum_lag{
+        env="prod",
+        group=~"jaws_fiberexternal_jbookfbr_sprod.*",
+        topic=~"DOM.BANK.INTTRANSFERS.MS|DOM.BANK.INTTRANSFERS.ET|APP.CMA.WRKFLW.MSBPM.RESPONSE"
+    }
+) 
+unless (
+    (hour() == 3 and minute() >= 30) or (hour() == 4 and minute() < 1)
+) > 100
