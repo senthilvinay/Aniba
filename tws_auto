@@ -1,0 +1,28 @@
+This script dynamically fetches job statuses from the TWS API and identifies jobs that haven’t succeeded, regardless of the application.
+It uses a YAML file to configure job details like names, monitoring time, and email settings, ensuring flexibility and reusability across apps
+
+
+jobs:
+  - jobnames: [BRRABWD, BRRDFWE]
+    appname: WMRISK
+    monitortime: "5 AM EST"
+    emailsub: ""
+
+  - jobnames: [BRRADFFF, BRRDRRR]
+    appname: STMT
+    monitortime: "6 AM EST"
+    emailsub: ""
+	
+  - jobnames: [BRRADFFF, BRRDRRR]
+    appname: JAWS
+    monitortime: "3 AM EST"
+    emailsub: ""
+
+common:
+  email_address: "your@email.com"
+  email_cc: "cc@email.com"
+  tws_api: "https://api.example.com"
+  sender: "sender@email.com"
+  receiver: "receiver@email.com"
+  api_username: "apiuser"
+  api_pwd: "apipassword"
