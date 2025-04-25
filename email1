@@ -1,0 +1,25 @@
+Dear Team,
+
+As part of the planned weekend DB migration activity for the PNSRT and D'ATA applications, we request your support in placing the following items on hold:
+
+Autosys Jobs:
+Please place all relevant jobs associated with PNSRT and D'ATA in ON-ICE status before the activity begins.
+
+Apica Monitoring Checks:
+Kindly suspend Apica synthetic monitoring for the above applications during the migration window to avoid false alerts.
+
+🔧 Activity Window:
+Start: [Insert Start Date & Time]
+End: [Insert End Date & Time]
+
+We will notify you once the migration is complete and it is safe to resume regular scheduling and monitoring.
+
+Please let us know once the changes are in place, or if any further information is required.
+
+Thank you for your support and coordination.
+
+Best regards,
+Senthil Vinayagam
+[Your Role / Project Name]
+[Your Contact Info, if needed]
+
