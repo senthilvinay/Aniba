@@ -1,0 +1,72 @@
+#!/bin/bash
+
+NOW="$(date +"%Y-%m")"
+echo "Date :" $NOW
+
+# Load exclude patterns from config
+RECON_EXCLUDES=$(cat /v/region/na/appl/wmconfirms/cfs/data/prod/config/recon_exclude_patterns.txt)
+RECEIVER_EXCLUDES=$(cat /v/region/na/appl/wmconfirms/cfs/data/prod/config/receiver_exclude_patterns.txt)
+
+# Build grep exclude string dynamically
+build_exclude_grep() {
+    local excludes="$1"
+    local grep_cmd=""
+    while read -r pattern; do
+        grep_cmd+=" | grep -v \"$pattern\""
+    done <<< "$excludes"
+    echo "$grep_cmd"
+}
+
+RECON_GREP=$(build_exclude_grep "$RECON_EXCLUDES")
+RECEIVER_GREP=$(build_exclude_grep "$RECEIVER_EXCLUDES")
+
+# Eval runs dynamic grep chain
+OUTPUT_Recon=$(eval "ls -ltr /v/region/na/appl/wmconfirms/cfs/data/prod/recon/invalid_feed/ | grep $NOW $RECON_GREP | awk -F ' ' '{print \$9}' | wc -l")
+OUTPUT_Receiver=$(eval "ls -ltr /v/region/na/appl/wmconfirms/cfs/data/prod/ip/stage/receiver/invalid_feed/ | grep $NOW $RECEIVER_GREP | awk -F ' ' '{print \$9}' | wc -l")
+
+INPUT_REC=$(find /v/region/na/appl/wmconfirms/cfs/data/prod/ip/receiver/ -mmin +30 -type f | wc -l)
+BFS_ACK=$(find /v/region/na/appl/wmconfirms/cfs/data/prod/ack/print/ -mmin +60 -type f | wc -l)
+EDEL_ACK=$(find /v/region/na/appl/wmconfirms/cfs/data/prod/ack/edelivery/ -mmin +60 -type f | wc -l)
+
+# Mail Body Preparation
+sed '1i Folder - /v/region/na/appl/wmconfirms/cfs/data/prod/recon/invalid_feed/' /v/region/na/appl/wmconfirms/cfs/data/prod/notification/mailbody_recon.txt > /v/region/na/appl/wmconfirms/cfs/data/prod/notification/mailbody_recon_new.txt
+
+sed '1i Folder - /v/region/na/appl/wmconfirms/cfs/data/prod/ip/stage/receiver/invalid_feed/' /v/region/na/appl/wmconfirms/cfs/data/prod/notification/mailbody_receiver.txt > /v/region/na/appl/wmconfirms/cfs/data/prod/notification/mailbody_receiver_new.txt
+
+sed '1i Folder - /v/region/na/appl/wmconfirms/cfs/data/prod/ip/receiver/' /v/region/na/appl/wmconfirms/cfs/data/prod/notification/mail_rec_ip.txt > /v/region/na/appl/wmconfirms/cfs/data/prod/notification/mail_rec_ip_new.txt
+
+sed '1i Folder - /v/region/na/appl/wmconfirms/cfs/data/prod/ack/print/' /v/region/na/appl/wmconfirms/cfs/data/prod/notification/mail_bfs_ack.txt > /v/region/na/appl/wmconfirms/cfs/data/prod/notification/mail_bfs_ack_new.txt
+
+sed '1i Folder - /v/region/na/appl/wmconfirms/cfs/data/prod/ack/edelivery/' /v/region/na/appl/wmconfirms/cfs/data/prod/notification/mail_edel_ack.txt > /v/region/na/appl/wmconfirms/cfs/data/prod/notification/mail_edel_ack_new.txt
+
+# Output Summary
+echo "Recon invalid feeds :" $OUTPUT_Recon
+echo "Receiver invalid feeds :" $OUTPUT_Receiver
+echo "Feeds stuck in Receiver input folder :" $INPUT_REC
+echo "BFS ack feeds stuck for more than an hour :" $BFS_ACK
+echo "EDEL ack feeds stuck for more than an hour :" $EDEL_ACK
+
+# Alerts
+if [ "$OUTPUT_Recon" -gt 0 ]; then
+  mail -s "CONFIRMS PROD Alert :: Invalid feeds received in Recon for $NOW" confirms-notification@morganstanley.com < /v/region/na/appl/wmconfirms/cfs/data/prod/notification/mailbody_recon_new.txt
+fi
+
+if [ "$OUTPUT_Receiver" -gt 0 ]; then
+  mail -s "CONFIRMS PROD Alert :: Invalid feeds received in Receiver for $NOW" confirms-notification@morganstanley.com < /v/region/na/appl/wmconfirms/cfs/data/prod/notification/mailbody_receiver_new.txt
+fi
+
+if [ "$INPUT_REC" -gt 0 ]; then
+  mail -s "CONFIRMS PROD Alert :: Feed is stuck in Receiver input for more than 30 mins. Plz check" confirms-notification@morganstanley.com < /v/region/na/appl/wmconfirms/cfs/data/prod/notification/mail_rec_ip_new.txt
+fi
+
+if [ "$BFS_ACK" -gt 0 ]; then
+  mail -s "CONFIRMS PROD Alert :: BFS ack files are stuck for more than an hour. Plz check" confirms-notification@morganstanley.com < /v/region/na/appl/wmconfirms/cfs/data/prod/notification/mail_bfs_ack_new.txt
+fi
+
+if [ "$EDEL_ACK" -gt 0 ]; then
+  mail -s "CONFIRMS PROD Alert :: EDEL ack files are stuck for more than an hour. Plz check" confirms-notification@morganstanley.com < /v/region/na/appl/wmconfirms/cfs/data/prod/notification/mail_edel_ack_new.txt
+fi
+
+if [ "$OUTPUT_Recon" -eq 0 ] && [ "$OUTPUT_Receiver" -eq 0 ] && [ "$INPUT_REC" -eq 0 ] && [ "$BFS_ACK" -eq 0 ] && [ "$EDEL_ACK" -eq 0 ]; then
+  echo "No invalid feeds found"
+fi
