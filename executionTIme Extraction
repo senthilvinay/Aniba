@@ -1,6 +1,2 @@
-index="log-10168-prod-c"
-"Execution Finished Successfully in"
-
-| rex "Method name: (?<method_name>\w+)\. Execution Finished Successfully in : (?<exec_time_ms>\d+)ms"
-| eval exec_time_ms = tonumber(exec_time_ms)
-| table method_name, exec_time_ms
+index="log-10168-prod-c"| rex "Method name:\s+(?<method_name>searchOrders\. Execution finished successfully in):\s+(?<execution_time>\d+\s+ms)"
+| table method_name execution_time
