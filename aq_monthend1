@@ -1,0 +1,63 @@
+import json
+import requests
+import datetime
+import os
+from requests_kerberos import HTTPKerberosAuth, OPTIONAL
+
+os.environ['REQUESTS_CA_BUNDLE'] = '/ms/dist/sec/PROJ/pki/prod/truststores/GenPop-PROD/combined/pem/bundle.pem'
+_auth = HTTPKerberosAuth(mutual_authentication=OPTIONAL)
+
+def tasklist(joblist):
+    jobstatus = {}
+
+    for eachjob in joblist:
+        print("Processing:", eachjob)
+        try:
+            x = eachjob
+            url = f"http://bsm.webfarm.ms.com/batchstabilitymonitor/api/BatchJob/RecentRunTimesChartData/{x}"
+
+            response = requests.get(url, timeout=300, auth=_auth)
+
+            if response.status_code in [200, 201]:
+                data = response.json()
+                content = data.get("Content", [])
+                target_path = data.get("TargetPath", "")
+                job_name = target_path.split("/")[-1] if target_path else eachjob
+
+                latest_entry = None
+                max_month_label = 0
+
+                for entry in content:
+                    if entry.get("JobCond") == "C":
+                        month_label = entry.get("MonthLabel", 0)
+                        if month_label > max_month_label:
+                            max_month_label = month_label
+                            latest_entry = entry
+
+                if latest_entry:
+                    # Convert MonthLabel to date
+                    latest_date = datetime.datetime.utcfromtimestamp(latest_entry["MonthLabel"]).date()
+
+                    # Convert LatestEnd to time (assumed in minutes)
+                    seconds = int(latest_entry["LatestEnd"]) * 60
+                    time_part = (datetime.datetime.min + datetime.timedelta(seconds=seconds)).time()
+                    formatted_time = time_part.strftime("%I:%M:%S %p")
+
+                    # Determine if this is too old (you can set threshold logic here if needed)
+                    now_month_label = int(datetime.datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0).timestamp())
+
+                    if max_month_label >= now_month_label:
+                        jobstatus[job_name] = ["COMPLETE", f"{latest_date.strftime('%Y-%m-%d')} {formatted_time}"]
+                    else:
+                        jobstatus[job_name] = ["WAITING", "-"]
+                else:
+                    jobstatus[job_name] = ["WAITING", "-"]
+            else:
+                print(f"Failed to get data for {eachjob}: HTTP {response.status_code}")
+                jobstatus[eachjob] = ["WAITING", "-"]
+
+        except Exception as e:
+            print(f"Exception occurred for {eachjob}: {str(e)}")
+            jobstatus[eachjob] = ["WAITING", "-"]
+
+    return jobstatus
