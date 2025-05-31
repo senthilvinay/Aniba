@@ -1,0 +1,64 @@
+import json
+import requests
+from requests.auth import HTTPBasicAuth
+import datetime
+
+def tasklist(url, joblist, username, pwd):
+    jobstatus = {}
+    today = datetime.datetime.now().date()
+    yesterday = today - datetime.timedelta(days=1)
+
+    for eachjob in joblist:
+        print("Processing:", eachjob)
+        try:
+            payload = json.dumps({
+                "filters": {
+                    "jobInPlanFilter": {
+                        "task": eachjob
+                    }
+                }
+            })
+
+            headers = {'Content-Type': 'application/json'}
+
+            response = requests.post(url, auth=HTTPBasicAuth(username, pwd),
+                                     headers=headers, data=payload, verify=False)
+
+            if response.status_code == 200:
+                data = response.json()
+                content = data.get("Content", [])
+                target_path = data.get("TargetPath", "")
+                job_name = target_path.split("/")[-1] if target_path else eachjob
+
+                latest_entry = None
+                for entry in content:
+                    if entry.get("JobCond") == "C":
+                        try:
+                            entry_date = datetime.datetime.strptime(entry["HumanReadableDate"], "%b %d %Y").date()
+                            if not latest_entry or entry_date > datetime.datetime.strptime(latest_entry["HumanReadableDate"], "%b %d %Y").date():
+                                latest_entry = entry
+                        except:
+                            continue
+
+                if latest_entry:
+                    latest_date = datetime.datetime.strptime(latest_entry["HumanReadableDate"], "%b %d %Y").date()
+                    if latest_date == today or latest_date == yesterday:
+                        # Convert numeric LatestEnd to HH:MM:SS AM/PM format
+                        seconds = int(latest_entry["LatestEnd"]) * 60  # Assuming it's in minutes, convert to seconds
+                        time_part = (datetime.datetime.min + datetime.timedelta(seconds=seconds)).time()
+                        formatted_time = time_part.strftime("%I:%M:%S %p")
+                        jobstatus[job_name] = ["COMPLETE", f"{latest_date.strftime('%Y-%m-%d')} {formatted_time}"]
+                    else:
+                        jobstatus[job_name] = ["WAITING", "-"]
+                else:
+                    jobstatus[job_name] = ["WAITING", "-"]
+
+            else:
+                print(f"Failed to get data for {eachjob}: HTTP {response.status_code}")
+                jobstatus[eachjob] = ["WAITING", "-"]
+
+        except Exception as e:
+            print(f"Exception occurred for {eachjob}: {str(e)}")
+            jobstatus[eachjob] = ["WAITING", "-"]
+
+    return jobstatus
