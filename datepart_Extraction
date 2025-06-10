@@ -1,0 +1,9 @@
+timestamp_variable = "2025-06-10 07:12:54"
+
+# Find the index of the first space
+space_index = timestamp_variable.find(" ")
+
+# Extract the substring before the space
+date_part = timestamp_variable[:space_index]
+
+print(date_part)
