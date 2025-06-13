@@ -1,0 +1,42 @@
+Thanks for the quick discussion regarding the Crontab feature available in MKS and the related query below.
+
+Could you please share your insights on the following point?
+
+We are currently using the Crontab scheduler functionality to restart the MKS instance during the weekend in our QA environment.
+
+
+---
+
+Before promoting to PROD, we have one key question regarding the Crontab configuration:
+
+As part of the Crontab schedule configuration, there's a parameter under the config map that previously used the value service. Based on the latest documentation, we’ve updated this parameter to cronservice, which is now a mandatory value.
+
+> This change is reflected in the configmap.yaml as part of the application config setup.
+
+
+
+Our concern is whether this change will have any impact on the MKS application if the application_type is now defined as cronservice instead of service.
+
+Could you please confirm if this change is acceptable for the MKS app to function correctly in PROD?
+
+
+---
+
+References:
+
+Documentation:
+appconfig Documentation – WMT Private Cloud Product Documentation
+
+Stash Reference:
+Browse wmpos/pnsrt-event-logger_appconfig
+
+
+Let us know your thoughts.
+
+Best regards,
+[Your Name]
+
+
+---
+
+Let me know if you'd like to include a direct YAML snippet or make it more technical for developer audiences.
