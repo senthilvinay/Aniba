@@ -15,42 +15,38 @@ def tasklist(joblist):
     for eachjob in joblist:
         print("Processing:", eachjob)
         try:
-            x = eachjob
-            url = f"http://bsm.webfarm.ms.com/batchstabilitymonitor/api/BatchJob/RecentRunTimesChartData/{x}"
-
+            url = f"http://bsm.webfarm.ms.com/batchstabilitymonitor/api/BatchJob/RecentRunTimes/{eachjob}"
             response = requests.get(url, timeout=300, auth=_auth)
 
-            if response.status_code == 200:
+            if response.status_code in [200, 201]:
                 data = response.json()
                 content = data.get("Content", [])
                 target_path = data.get("TargetPath", "")
                 job_name = target_path.split("/")[-1] if target_path else eachjob
 
+                # Filter only successful jobs
                 latest_entry = None
                 for entry in content:
-                    if entry.get("JobCond") == "C":
+                    if entry.get("Cond Status") == "C":
+                        end_datetime_str = f"{entry['End Date'].split('T')[0]} {entry['End Time']}"
                         try:
-                            entry_date = datetime.datetime.strptime(entry["HumanReadableDate"], "%b %d %Y").date()
-                            if not latest_entry or entry_date > datetime.datetime.strptime(latest_entry["HumanReadableDate"], "%b %d %Y").date():
-                                latest_entry = entry
-                        except:
+                            end_datetime = datetime.datetime.strptime(end_datetime_str, "%Y-%m-%d %H:%M:%S")
+                            if not latest_entry or end_datetime > latest_entry:
+                                latest_entry = end_datetime
+                        except Exception as e:
                             continue
 
                 if latest_entry:
-                    latest_date = datetime.datetime.strptime(latest_entry["HumanReadableDate"], "%b %d %Y").date()
-                    if latest_date == today or latest_date == yesterday:
-                        # Convert numeric LatestEnd to HH:MM:SS AM/PM format
-                        seconds = int(latest_entry["LatestEnd"]) * 60  # Assuming it's in minutes, convert to seconds
-                        time_part = (datetime.datetime.min + datetime.timedelta(seconds=seconds)).time()
-                        formatted_time = time_part.strftime("%I:%M:%S %p")
-                        jobstatus[job_name] = ["COMPLETE", f"{latest_date.strftime('%Y-%m-%d')} {formatted_time}"]
+                    formatted_end = latest_entry.strftime("%Y-%m-%d %I:%M:%S %p")
+                    if latest_entry.date() in [today, yesterday]:
+                        jobstatus[job_name] = ["COMPLETE", formatted_end]
                     else:
                         jobstatus[job_name] = ["WAITING", "-"]
                 else:
                     jobstatus[job_name] = ["WAITING", "-"]
 
             else:
-                print(f"Failed to get data for {eachjob}: HTTP {response.status_code}")
+                print(f"Failed to fetch {eachjob}: HTTP {response.status_code}")
                 jobstatus[eachjob] = ["WAITING", "-"]
 
         except Exception as e:
