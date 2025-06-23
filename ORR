@@ -1,0 +1,39 @@
+Access Control Review
+
+Ensure roles & access levels are defined, documented, and reviewed (e.g., admin, read-only, support).
+
+SLA/OLA Documentation
+
+Define Service Level Agreements and Operational Level Agreements for uptime, incident resolution, etc.
+
+Audit & Compliance Readiness
+
+Ensure logging, audit trails, and compliance reports are in place for governance.
+
+Backup & Restore Validation
+
+Confirm backup schedules, retention policies, and test recovery procedures.
+
+Runbook Creation
+
+Prepare a support runbook covering start/stop steps, common issues, health checks, and escalation contacts.
+
+Security Review & Pen Testing
+
+Conduct vulnerability scans or confirm security approvals.
+
+Monitoring Dashboards
+
+Are key metrics exposed via dashboards (e.g., Grafana, CloudWatch, etc.)?
+
+Deployment Checklist
+
+A documented release checklist (especially for CI/CD or manual deploys).
+
+Communication Plan
+
+Define notification flow: whom to contact, and how (mail/SMS/Teams) in case of alerts/failures.
+
+Archival/Retention Strategy
+
+What data is archived, for how long, and where?
