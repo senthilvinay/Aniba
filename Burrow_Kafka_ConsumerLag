@@ -1,0 +1,87 @@
+How Burrow Measures Kafka Consumer Lag
+Burrow computes lag per partition per consumer group by comparing the latest committed offset with the latest log end offset (LEO) for each partition.
+
+📐 Key Components in Lag Calculation:
+Metric	Description
+Log End Offset (LEO)	The latest offset of a partition (i.e., the head of the Kafka log)
+Committed Offset	The offset that the consumer group has committed (i.e., read & saved)
+Lag	LEO - Committed Offset → Number of messages yet to be processed
+
+📊 Example:
+Let’s say:
+
+Kafka Topic Partition: topic-A-0
+
+LEO (Kafka end offset): 1200
+
+Consumer Group committed offset: 1150
+
+➡️ Lag = 1200 - 1150 = 50
+
+Burrow will keep tracking this lag over time.
+
+🧠 How Burrow Evaluates Lag Over Time
+Burrow uses a windowed evaluation system:
+
+It periodically polls Kafka for:
+
+Latest LEO per partition
+
+Latest committed offset per consumer group
+
+It stores lag history in a sliding window (e.g., 10 entries)
+
+Then it applies smart heuristics:
+
+If lag is stable or decreasing, status is OK
+
+If lag is increasing consistently, status is WARN or ERR
+
+This prevents false alerts for consumers that occasionally fall behind but catch up later.
+
+✅ Burrow Outputs
+For each consumer group, it gives:
+
+Status: OK / WARN / ERR / STOP
+
+Details per topic-partition
+
+Optional HTTP API to fetch status and lag
+
+⚙️ Burrow Architecture at a Glance
+pgsql
+Copy
+Edit
+Kafka Cluster
+     |
+[ Kafka Client (Burrow) ]
+     |
+[ Offset Tracker ] <--- [ LEO Tracker ]
+     |
+[ Evaluator (Logic: OK/WARN/ERR) ]
+     |
+[ HTTP API / Notifier (Email, Slack, etc.) ]
+🛠 Example Lag API Output from Burrow:
+json
+Copy
+Edit
+{
+  "status": "WARN",
+  "group": "consumer-1",
+  "partitions": [
+    {
+      "topic": "topic-A",
+      "partition": 0,
+      "status": "WARN",
+      "lag": 50,
+      "current_offset": 1150,
+      "end": 1200
+    }
+  ]
+}
+🚨 Summary
+Burrow doesn't just alert on lag — it evaluates lag trends to prevent noise.
+
+It’s read-only — doesn’t interfere with Kafka consumers.
+
+Ideal for SREs/devops who want visibility without false alarms.
