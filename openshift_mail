@@ -1,0 +1,90 @@
+Subject: Issue Observed with Cron-Scheduling in PROD (HZ/R1) – Pods Not Scaling as Expected
+
+Dear OpenShift Team,
+Over the past three weeks, we have conducted thorough testing of the Cron-Scheduling feature in our lower environments (QA1 and QA). We are pleased to share that the testing results were successful, and the pods restarted correctly as per the defined schedules (Daily/Sun/Mon at 2:00 AM and 5:00 AM).
+
+However, during today's observation on the production environment, we encountered an issue on the HZ/R1 cluster. Below are the details:
+
+🔍 Production Observation – HZ/R1 Cluster
+EventLogger Pods did not come up with the expected count (20 pods) post deployment. Only 1 instance was observed.
+
+In contrast, the RR/R1 cluster scaled the EventLogger Pods correctly to 20 instances as expected.
+
+ExceptionLogger Pods were scaled correctly to 1 instance on both clusters, which is the intended behavior.
+
+✅ QA/QA1 Environment Observation
+Pods were restarted correctly with the expected scale count (4 instances).
+
+The scheduled restarts are occurring as defined in the Cron-App configuration YAML.
+
+⚙️ YAML Configuration Reference
+We are currently using the YAML configuration below (based on the Retirement team’s working implementation in PROD):
+
+yaml
+Copy
+Edit
+  - cronschedule: "00 2 * * 0"      # Sunday 2:00 AM - Set initial count to 4
+    instances: "20"
+  - cronschedule: "01 2 * * 0"      # Sunday 2:01 AM - Scale down to 0
+    instances: "0"
+  - cronschedule: "02 2 * * 0"      # Sunday 2:02 AM - Scale up to 4
+    instances: "20"
+We kindly request your assistance in investigating the HZ/R1 pod scaling issue. Please let us know if any additional logs or inputs are required from our end.
+
+Thank you for your support.
+
+Best regards,
+[Your Name]
+[Your Team / Department]
+[Contact Information]
+
+Let me know if you want to include logs, screenshots, or any more technical info.
+
+
+
+- cronschedule: "00 2 * * 0"      # Sunday 2:00am - Set initial count to 4
+  instances: "20"
+Time: Every Sunday at 2:00 AM
+
+Action: Set instance count to 20
+
+Comment says: “Set initial count to 4”, but the actual value is 20 – this might be a mismatch between comment and value.
+
+Purpose: Possibly pre-allocating or warming up resources before a scale-down and re-scale operation.
+
+2️⃣
+yaml
+Copy
+Edit
+- cronschedule: "01 2 * * 0"      # Sunday 2:01am - Scale down to 0
+  instances: "0"
+Time: Every Sunday at 2:01 AM (just one minute after the previous job)
+
+Action: Scale down instance count to 0
+
+Purpose: Likely meant to simulate a restart or reset of pods by taking everything offline.
+
+3️⃣
+yaml
+Copy
+Edit
+- cronschedule: "02 2 * * 0"      # Sunday 2:02am - Scale up to 4
+  instances: "20"
+Time: Every Sunday at 2:02 AM
+
+Action: Scale instance count back up to 20 (again, comment says 4, value is 20)
+
+Purpose: Restore services after the reset/downtime from 2:01 AM.
+
+❗Possible Concerns:
+The comments say "count to 4", but values show "20" – this should be corrected for clarity.
+
+Three jobs within 3 minutes can lead to race conditions or overlapping resource activity unless handled safely.
+
+The sequence seems to simulate a refresh cycle:
+
+Prepare pods
+
+Kill all
+
+Restart everything cleanly
