@@ -1,0 +1,32 @@
+Subject: Assistance Required: Log Export Failure to Splunk from Host aaaaabc400
+
+Dear WinOps Team,
+
+We would like to bring to your attention an issue we've encountered related to the log export mechanism from one of our application hosts.
+
+One of our Autosys jobs, EMF-Bookkeeprocessor, which normally runs fine, recently failed.
+
+Upon investigation, we observed that no logs were available in Splunk for this job during the failure window.
+
+We then checked the application server aaaaabc400, and found an error in the Windows Event Viewer (please refer to the attached screenshot). The Event Viewer logs show an error related to Schannel – Event ID 36871, with the message:
+
+“A fatal error occurred while creating a TLS client credential. The internal error state is 10013.”
+
+This appears to have interrupted the log forwarding to Splunk during that period.
+
+We are requesting your assistance in:
+
+Reviewing the error on the host to determine if it blocked or disrupted the Splunk Forwarder service.
+
+Confirming if there was any interruption in network connectivity or TLS handshake with the Splunk endpoint.
+
+Sharing any corrective or preventive measures if applicable.
+
+Additionally, do you see any possibility that the Autosys agent on the host might have been impacted due to this or contributed to the failure?
+
+Please let us know your observations at the earliest. We are happy to coordinate further for any troubleshooting steps needed.
+
+Best regards,
+Your Name
+Your Team / Project
+Contact Info
