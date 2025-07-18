@@ -1,0 +1,58 @@
+from datetime import datetime, timedelta
+import requests
+
+def tasklist(joblist):
+    jobstatus = {}
+    today = datetime.now().date()
+    yesterday = today - timedelta(days=1)
+    six_hours_ago = datetime.now() - timedelta(hours=6)
+    bsmapil_url = read_config()
+
+    for eachjob in joblist:
+        print("Processing:", eachjob)
+        try:
+            url = f"{bsmapil_url}/{eachjob}"
+            response = requests.get(url, timeout=300, auth=auth)
+            if response.status_code in [200, 201]:
+                data = response.json()
+                content = data.get("Content", [])
+                target_path = data.get("TargetPath", "")
+                job_name = target_path.split("/")[-1] if target_path else eachjob
+
+                latest_entry = None
+                latest_cond_status = None
+
+                for entry in content:
+                    try:
+                        end_datetime_str = f"{entry['End Date'].split('T')[0]} {entry['End Time']}"
+                        end_datetime = datetime.strptime(end_datetime_str, "%Y-%m-%d %H:%M:%S")
+                        if not latest_entry or end_datetime > latest_entry:
+                            latest_entry = end_datetime
+                            latest_cond_status = entry.get("Cond Status")
+                    except Exception as e:
+                        print(f"Error parsing date for {eachjob}: {str(e)}")
+                        continue
+
+                if latest_entry:
+                    formatted_end = latest_entry.strftime("%Y-%m-%d %I:%M:%S %p")
+                    if latest_cond_status == "C" and (
+                        latest_entry.date() == today or 
+                        (latest_entry.date() == yesterday and latest_entry >= six_hours_ago)
+                    ):
+                        jobstatus[job_name] = ("COMPLETE", formatted_end)
+                    elif latest_cond_status == "E":
+                        jobstatus[job_name] = ("FAILED", formatted_end)
+                    else:
+                        jobstatus[job_name] = ("WAITING", "-")
+                else:
+                    jobstatus[job_name] = ("WAITING", "-")
+            else:
+                print(f"Failed to fetch {eachjob}: HTTP {response.status_code}")
+                jobstatus[eachjob] = ("WAITING", "-")
+
+        except Exception as e:
+            print(f"Exception occurred for {eachjob}: {str(e)}")
+            jobstatus[eachjob] = ("WAITING", "-")
+
+    print("END..................")
+    return jobstatus
