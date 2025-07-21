@@ -1,0 +1,10 @@
+index="log-10168-prod-c" (
+    "Unhandled exception during PAD" OR 
+    "The connection observed an error" OR 
+    "DB save error occurred" OR 
+    "deadlocked" OR 
+    "com.microsoft.sqlserver.jdbc.SQLServerException"
+) 
+NOT ("svcproxy.prod.ms.com") 
+NOT (source="/services/wmpso-tsa-tradesearch-service-docket/log/current" OR "TRADE.MULTI STEP ADJUSTMENT") 
+NOT ("com.ms.wm.pnsrt.tradeingestion.TradeIngestionScheduler.jobScheduled(TradeIngestionScheduler.java:31) ~[classes/:na]")
