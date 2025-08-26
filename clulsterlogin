@@ -1,0 +1,227 @@
+import concurrent.futures
+import sys
+import time
+from typing import List, Dict, Any
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import json
+
+# Mock functions - replace with your actual implementations
+def login_max_cluster(cluster: str) -> bool:
+    """Login to Kubernetes cluster"""
+    print(f"Logging into cluster: {cluster}")
+    # Add your actual login logic here
+    time.sleep(1)  # Simulate login time
+    return True
+
+def restart_nape(cluster: str, deployment_id: str, exclude_services: List[str]) -> Dict[str, Any]:
+    """Restart NAPE services in parallel"""
+    print(f"Restarting NAPE on {cluster} for deployment {deployment_id}")
+    print(f"Excluding services: {exclude_services}")
+    # Add your actual restart logic here
+    time.sleep(5)  # Simulate restart time
+    return {"status": "success", "cluster": cluster}
+
+def get_pods(deployment_id: str, cluster: str) -> Dict[str, Any]:
+    """Get pod status from cluster"""
+    print(f"Getting pods from {cluster} for deployment {deployment_id}")
+    # Add your actual pod retrieval logic here
+    time.sleep(2)  # Simulate API call
+    return {
+        "cluster": cluster,
+        "pods": [
+            {"name": f"pod-1-{cluster}", "status": "Running", "restarts": 0},
+            {"name": f"pod-2-{cluster}", "status": "Running", "restarts": 1}
+        ]
+    }
+
+def send_email(sender: str, receiver: str, subject: str, body: str) -> bool:
+    """Send email report"""
+    print(f"Sending email to {receiver}")
+    print(f"Subject: {subject}")
+    print(f"Body:\n{body}")
+    # Add your actual email sending logic here
+    return True
+
+def process_cluster(cluster: str, config: Dict[str, Any]) -> Dict[str, Any]:
+    """Process a single cluster in parallel"""
+    result = {
+        "cluster": cluster,
+        "login_status": False,
+        "restart_status": False,
+        "pod_status": {},
+        "error": None
+    }
+    
+    try:
+        # 1. Login to cluster
+        login_status = login_max_cluster(cluster)
+        result["login_status"] = login_status
+        
+        if not login_status:
+            result["error"] = "Login failed"
+            return result
+        
+        # 2. Restart NAPE (if required)
+        if config.get('restart_required', False):
+            restart_result = restart_nape(
+                cluster, 
+                config['deployment_id'], 
+                config.get('exclude_services_restart', [])
+            )
+            result["restart_status"] = restart_result.get("status") == "success"
+            
+            # Wait for restart to complete
+            wait_time = config.get('wait_time', 420)
+            print(f"Waiting {wait_time} seconds for restart to complete on {cluster}")
+            time.sleep(wait_time)
+        
+        # 3. Get pod status
+        pods_result = get_pods(config['deployment_id'], cluster)
+        result["pod_status"] = pods_result
+        
+    except Exception as e:
+        result["error"] = str(e)
+    
+    return result
+
+def generate_report(results: List[Dict[str, Any]], config: Dict[str, Any]) -> str:
+    """Generate comprehensive deployment report"""
+    report = []
+    report.append("=" * 80)
+    report.append("PROD-PNSRT MKS DEPLOYMENT RESTART STATUS REPORT")
+    report.append("=" * 80)
+    report.append(f"Deployment ID: {config['deployment_id']}")
+    report.append(f"Restart Required: {config.get('restart_required', False)}")
+    report.append(f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    report.append("")
+    
+    # Summary section
+    total_clusters = len(results)
+    successful_logins = sum(1 for r in results if r['login_status'])
+    successful_restarts = sum(1 for r in results if r['restart_status'])
+    clusters_with_errors = sum(1 for r in results if r['error'])
+    
+    report.append("SUMMARY:")
+    report.append(f"Total Clusters: {total_clusters}")
+    report.append(f"Successful Logins: {successful_logins}")
+    report.append(f"Successful Restarts: {successful_restarts}")
+    report.append(f"Clusters with Errors: {clusters_with_errors}")
+    report.append("")
+    
+    # Detailed results per cluster
+    report.append("DETAILED RESULTS:")
+    report.append("-" * 80)
+    
+    for result in results:
+        report.append(f"Cluster: {result['cluster']}")
+        report.append(f"  Login Status: {'SUCCESS' if result['login_status'] else 'FAILED'}")
+        report.append(f"  Restart Status: {'SUCCESS' if result['restart_status'] else 'NOT REQUIRED/FAILED'}")
+        
+        if result['error']:
+            report.append(f"  Error: {result['error']}")
+        
+        if result['pod_status']:
+            report.append("  Pod Status:")
+            for pod in result['pod_status'].get('pods', []):
+                report.append(f"    {pod['name']}: {pod['status']} (Restarts: {pod['restarts']})")
+        
+        report.append("-" * 80)
+    
+    # Overall status
+    all_successful = all(r['login_status'] and 
+                        (not config.get('restart_required') or r['restart_status']) 
+                        for r in results)
+    
+    report.append("")
+    report.append("OVERALL STATUS:")
+    report.append("SUCCESS" if all_successful else "FAILED")
+    report.append("=" * 80)
+    
+    return "\n".join(report)
+
+def main():
+    # Configuration - replace with your actual config loading
+    config = {
+        "clusters": [
+            "app41.hz.k8s.na.ms.com",
+            "app42.rr.k8s.na.ms.com",
+            "app33.nj.k8s.yn.ms.com",
+            "app33.nk.k8s.yn.ms.com",
+            "app34.nj.k8s.yn.ms.com",
+            "app34.nk.k8s.yn.ms.com"
+        ],
+        "exclude_services_restart": [
+            "pnsrt-cinema-prod-rl-dep",
+            "pnsrt-cinema-prod-r2-dep"
+        ],
+        "deployment_id": "wm-10168",
+        "restart_required": True,
+        "wait_time": 420,
+        "email": {
+            "subject": "PROD-PNSRT MKS Deployment Restart Status",
+            "receiver": "wmt-cpasp-risk-sec-transfer@morganstanley.com",
+            "sender": "pnsrt-dev@morganstanley.com"
+        }
+    }
+    
+    print("Starting parallel cluster processing...")
+    print(f"Clusters to process: {len(config['clusters'])}")
+    print(f"Restart required: {config['restart_required']}")
+    print("")
+    
+    # Parallel processing using ThreadPoolExecutor
+    results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(config['clusters'])) as executor:
+        # Submit all cluster processing tasks
+        future_to_cluster = {
+            executor.submit(process_cluster, cluster, config): cluster 
+            for cluster in config['clusters']
+        }
+        
+        # Collect results as they complete
+        for future in concurrent.futures.as_completed(future_to_cluster):
+            cluster = future_to_cluster[future]
+            try:
+                result = future.result()
+                results.append(result)
+                print(f"Completed processing for cluster: {cluster}")
+            except Exception as e:
+                error_result = {
+                    "cluster": cluster,
+                    "login_status": False,
+                    "restart_status": False,
+                    "pod_status": {},
+                    "error": str(e)
+                }
+                results.append(error_result)
+                print(f"Error processing cluster {cluster}: {e}")
+    
+    # Generate and display report
+    report = generate_report(results, config)
+    print("\n" + report)
+    
+    # Send email report
+    email_config = config.get('email', {})
+    email_sent = send_email(
+        email_config.get('sender'),
+        email_config.get('receiver'),
+        email_config.get('subject'),
+        report
+    )
+    
+    if email_sent:
+        print("Email report sent successfully")
+    else:
+        print("Failed to send email report")
+    
+    # Exit with appropriate status code
+    all_successful = all(r['login_status'] and 
+                        (not config.get('restart_required') or r['restart_status']) 
+                        for r in results)
+    
+    sys.exit(0 if all_successful else 1)
+
+if __name__ == "__main__":
+    main()
