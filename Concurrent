@@ -1,0 +1,69 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
+
+def process_cluster(cluster, config, i):
+    """Process a single cluster: login, restart if required, get pod details."""
+    results = {}
+    try:
+        print(f"[{cluster}] Occurrence Number: {i}")
+        print(login_mks_cluster(cluster))
+
+        # Get initial pods
+        pods_result = get_pods(config['deployment_id'], cluster)
+        results["initial_pods"] = pods_result
+
+        if config["restart_required"] == "True":
+            print(f"[{cluster}] Restart required - running restart_aapc...")
+            print(restart_aapc(config['deployment_id'], config['exclude_services_restart']))
+            time.sleep(config['wait_time'])
+        else:
+            print(f"[{cluster}] No restart required.")
+
+        # After restart → get pod status again
+        get_pod_details = get_pods(config['deployment_id'], cluster)
+        results["final_pods"] = get_pod_details
+
+        print(f"[{cluster}] Logging out...")
+        print(logout_mks_cluster(cluster))
+
+        return get_pod_details
+
+    except Exception as e:
+        print(f"[{cluster}] Error: {e}")
+        return [{"cluster": cluster, "status": "ERROR", "error": str(e)}]
+
+
+def main(config):
+    get_pod_status = []
+
+    with ThreadPoolExecutor(max_workers=len(config["clusters"])) as executor:
+        futures = {
+            executor.submit(process_cluster, cluster, config, i): cluster
+            for i, cluster in enumerate(config["clusters"], start=1)
+        }
+
+        for future in as_completed(futures):
+            cluster = futures[future]
+            try:
+                result = future.result()
+                get_pod_status.extend(result)
+            except Exception as e:
+                print(f"[{cluster}] failed with exception: {e}")
+
+    # Final report
+    dep_status = report_conversion(get_pod_status)
+    print(get_pod_status)
+
+    status_flag = (
+        "RED"
+        if any(item["status"] != "Running" for item in get_pod_status)
+        else "GREEN"
+    )
+
+    send(
+        dep_status,
+        status_flag,
+        config["email"]["subject"],
+        config["email"]["receiver"],
+        config["email"]["sender"],
+    )
