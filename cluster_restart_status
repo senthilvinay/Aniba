@@ -1,0 +1,183 @@
+#!/ms/dist/python/PROJ/core/3.11.4-1/bin/python
+
+import sys
+import json
+import time
+import concurrent.futures
+import app_base
+
+
+def login_mks_cluster(mks_cluster):
+    print(f"🔑 Logging in to {mks_cluster}")
+    command = ["/ms/dist/cloud/PROJ/unimatrix/prod/bin/unimatrix", "login", mks_cluster]
+    login_raw = app_base.execute_command(command, 60)
+    if login_raw.returncode != 0:
+        print(f"❌ Login failed for {mks_cluster}: {login_raw.stderr.decode('utf-8')}")
+        return False
+    return "MKS login completed" in login_raw.stdout.decode("utf-8")
+
+
+def logout_mks_cluster(mks_cluster):
+    print(f"🔒 Logging out from {mks_cluster}")
+    command = ["/ms/dist/cloud/PROJ/unimatrix/prod/bin/unimatrix", "logout", mks_cluster]
+    logout_raw = app_base.execute_command(command, 60)
+    return "MKS logout completed" in logout_raw.stdout.decode("utf-8")
+
+
+def get_deployments(namespace):
+    deployments = []
+    command = [
+        "/ms/dist/cloud/PROJ/kubectl/prod/bin/kubectl",
+        "get",
+        "deployments",
+        "-o",
+        "json",
+        "-n",
+        namespace,
+    ]
+    deployments_raw = app_base.execute_command(command, 30)
+    deployments_data = json.loads(deployments_raw.stdout.decode("utf-8"))
+    for item in deployments_data["items"]:
+        deployments.append(item["metadata"]["name"])
+    return deployments
+
+
+def get_pods(namespace, cluster):
+    pod_result = []
+    command = [
+        "/ms/dist/cloud/PROJ/kubectl/prod/bin/kubectl",
+        "get",
+        "pods",
+        "-n",
+        namespace,
+    ]
+    pods = app_base.execute_command(command, 30)
+    pods_raw = pods.stdout.decode("utf-8").split("\n")[1:]  # skip header
+
+    for element in pods_raw:
+        if element.strip():
+            parts = element.split()
+            if len(parts) >= 3:
+                pod_name = parts[0]
+                pod_status = parts[2]
+                pod_result.append({"cluster": cluster, "pod": pod_name, "status": pod_status})
+    return pod_result
+
+
+def restart_aapc(namespace, exclude_services):
+    deployments = get_deployments(namespace)
+    restart_status = {}
+    for deployment in deployments:
+        if deployment in exclude_services:
+            print(f"⏩ Skipping excluded service: {deployment}")
+            continue
+
+        command = [
+            "/ms/dist/cloud/PROJ/kubectl/prod/bin/kubectl",
+            "rollout",
+            "restart",
+            "deployment",
+            deployment,
+            "-n",
+            namespace,
+        ]
+        restart_raw = app_base.execute_command(command, 600)
+        restart_status[deployment] = restart_raw.returncode == 0
+    return restart_status
+
+
+def process_cluster(cluster, config):
+    """Login, restart deployments, fetch pod details, logout"""
+    try:
+        if not login_mks_cluster(cluster):
+            return []
+
+        if config.get("restart_required", "False").lower() == "true":
+            print(f"♻️ Restarting deployments in {cluster}")
+            restart_aapc(config["deployment_id"], config["exclude_services_restart"])
+            print(f"⏱ Waiting {config['wait_time']} seconds...")
+            time.sleep(config["wait_time"])
+
+        pod_details = get_pods(config["deployment_id"], cluster)
+
+        logout_mks_cluster(cluster)
+        return pod_details
+
+    except Exception as e:
+        print(f"❌ Error in cluster {cluster}: {e}")
+        return []
+
+
+def send(html_text, sub, mails, sender):
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    from email.utils import formataddr
+    from email.header import Header
+
+    msg = MIMEMultipart("alternative")
+    msg["From"] = formataddr(((str(Header("Statement", "utf-8"))), sender))
+    msg["To"] = mails
+    msg["Subject"] = sub
+    body = MIMEText(html_text, "html")
+    msg.attach(body)
+
+    server = smtplib.SMTP()
+    server.connect("smtp-hub.ms.com")
+    server.sendmail(sender, mails.split(","), msg.as_string())
+    server.close()
+
+
+def report_conversion(pod_data):
+    status_flag = "RED" if any(item["status"] != "Running" for item in pod_data) else "GREEN"
+    html_content = """
+    <html>
+    <head><title>Deployment Report</title></head>
+    <body>
+    <h3 style="color:{};">PNSRT Deployment's Restart Report</h3>
+    <table border="1" cellspacing="0" cellpadding="4">
+        <tr><th>S.No</th><th>Cluster</th><th>Pod Name</th><th>Status</th></tr>
+    """.format(status_flag)
+
+    for i, item in enumerate(pod_data):
+        html_content += f"<tr><td>{i+1}</td><td>{item['cluster']}</td><td>{item['pod']}</td><td>{item['status']}</td></tr>"
+
+    html_content += "</table></body></html>"
+    return html_content, status_flag
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python script.py <config_file>")
+        sys.exit(1)
+
+    config_path = sys.argv[1]
+    with open(config_path, "r") as f:
+        config = json.load(f)
+
+    all_pod_status = []
+
+    # Run clusters concurrently
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(config["clusters"])) as executor:
+        future_to_cluster = {executor.submit(process_cluster, cluster, config): cluster for cluster in config["clusters"]}
+        for future in concurrent.futures.as_completed(future_to_cluster):
+            cluster = future_to_cluster[future]
+            try:
+                result = future.result()
+                all_pod_status.extend(result)
+                print(f"✅ Finished processing {cluster}")
+            except Exception as e:
+                print(f"❌ Cluster {cluster} failed: {e}")
+
+    html_report, status_flag = report_conversion(all_pod_status)
+    send(
+        html_report,
+        f"{status_flag} {config['email']['subject']}",
+        config["email"]["receiver"],
+        config["email"]["sender"],
+    )
+    print("📨 Email report sent!")
+
+
+if __name__ == "__main__":
+    main()
