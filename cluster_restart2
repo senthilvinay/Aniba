@@ -1,0 +1,408 @@
+#!/ms/dist/python/PROJ/core/3.11.4-1/bin/python
+
+import sys
+import json
+import time
+import concurrent.futures
+import app_base
+from datetime import datetime, timedelta
+
+
+def login_mks_cluster(mks_cluster):
+    print(f"🔑 Logging in to {mks_cluster}")
+    command = ["/ms/dist/cloud/PROJ/unimatrix/prod/bin/unimatrix", "login", mks_cluster]
+    login_raw = app_base.execute_command(command, 60)
+    if login_raw.returncode != 0:
+        print(f"❌ Login failed for {mks_cluster}: {login_raw.stderr.decode('utf-8')}")
+        return False
+    return "MKS login completed" in login_raw.stdout.decode("utf-8")
+
+
+def logout_mks_cluster(mks_cluster):
+    print(f"🔒 Logging out from {mks_cluster}")
+    command = ["/ms/dist/cloud/PROJ/unimatrix/prod/bin/unimatrix", "logout", mks_cluster]
+    logout_raw = app_base.execute_command(command, 60)
+    return "MKS logout completed" in logout_raw.stdout.decode("utf-8")
+
+
+def get_deployments_for_cluster(namespace, cluster):
+    """Get deployments for a specific cluster (requires login first)"""
+    deployments = []
+    command = [
+        "/ms/dist/cloud/PROJ/kubectl/prod/bin/kubectl",
+        "get",
+        "deployments",
+        "-o",
+        "json",
+        "-n",
+        namespace,
+    ]
+    
+    try:
+        deployments_raw = app_base.execute_command(command, 30)
+        deployments_data = json.loads(deployments_raw.stdout.decode("utf-8"))
+        for item in deployments_data["items"]:
+            deployments.append(item["metadata"]["name"])
+        return deployments
+    except Exception as e:
+        print(f"❌ Error getting deployments from {cluster}: {e}")
+        return []
+
+
+def get_all_deployments(config):
+    """Get deployments for all clusters and return as a list of (host, deployments) tuples"""
+    deployments_by_cluster = []
+    
+    for cluster in config["clusters"]:
+        print(f"📋 Fetching deployments from {cluster}")
+        
+        # Login to the cluster
+        if not login_mks_cluster(cluster):
+            deployments_by_cluster.append((cluster, []))
+            continue
+        
+        # Get deployments
+        deployments = get_deployments_for_cluster(config["deployment_id"], cluster)
+        deployments_by_cluster.append((cluster, deployments))
+        
+        # Logout from the cluster
+        logout_mks_cluster(cluster)
+        print(f"✅ Retrieved {len(deployments)} deployments from {cluster}")
+    
+    return deployments_by_cluster
+
+
+def get_pods_with_details(namespace, cluster):
+    pod_result = []
+    command = [
+        "/ms/dist/cloud/PROJ/kubectl/prod/bin/kubectl",
+        "get",
+        "pods",
+        "-n",
+        namespace,
+        "-o=jsonpath='{range .items[*]}{.metadata.name}{\"|\"}{.status.phase}{\"|\"}{.status.startTime}{\"\\n\"}{end}'"
+    ]
+    pods = app_base.execute_command(command, 30)
+    pods_raw = pods.stdout.decode("utf-8").strip().split('\n')
+    
+    for pod_info in pods_raw:
+        if pod_info.strip():
+            # Remove quotes from the output
+            pod_info = pod_info.replace("'", "")
+            parts = pod_info.split('|')
+            if len(parts) >= 3:
+                pod_name = parts[0]
+                pod_status = parts[1]
+                start_time = parts[2] if len(parts) > 2 else "Unknown"
+                
+                # Calculate time difference if we have a valid start time
+                time_diff = "N/A"
+                if start_time != "Unknown" and start_time:
+                    try:
+                        pod_time = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                        current_time = datetime.now(pod_time.tzinfo)
+                        time_diff = current_time - pod_time
+                        time_diff = str(time_diff).split('.')[0]  # Remove microseconds
+                    except ValueError:
+                        time_diff = "Invalid timestamp"
+                
+                pod_result.append({
+                    "cluster": cluster, 
+                    "pod": pod_name, 
+                    "status": pod_status,
+                    "start_time": start_time,
+                    "uptime": time_diff
+                })
+    return pod_result
+
+
+def get_pod_metrics(namespace, cluster):
+    """Get detailed metrics about deployments and pods"""
+    metrics = {
+        "cluster": cluster,
+        "deployments": [],
+        "pods": []
+    }
+    
+    # Get deployments
+    deployments = get_deployments_for_cluster(namespace, cluster)
+    metrics["deployments"] = deployments
+    
+    # Get pod details
+    metrics["pods"] = get_pods_with_details(namespace, cluster)
+    
+    return metrics
+
+
+def restart_aapc(namespace, exclude_services, cluster, deployments):
+    restart_status = {}
+    
+    for deployment in deployments:
+        if deployment in exclude_services:
+            print(f"⏩ Skipping excluded service: {deployment} on cluster {cluster}")
+            continue
+
+        print(f"♻️ Restarting Deployment '{deployment}' on cluster '{cluster}'")
+        command = [
+            "/ms/dist/cloud/PROJ/kubectl/prod/bin/kubectl",
+            "rollout",
+            "restart",
+            "deployment",
+            deployment,
+            "-n",
+            namespace,
+        ]
+        restart_raw = app_base.execute_command(command, 600)
+        success = restart_raw.returncode == 0
+        restart_status[deployment] = success
+        
+        if success:
+            print(f"✅ Successfully restarted Deployment '{deployment}' on cluster '{cluster}'")
+        else:
+            print(f"❌ Failed to restart Deployment '{deployment}' on cluster '{cluster}': {restart_raw.stderr.decode('utf-8')}")
+    
+    return restart_status
+
+
+def process_cluster(cluster, config, cluster_deployments):
+    """Login, restart deployments, fetch pod details, logout"""
+    try:
+        if not login_mks_cluster(cluster):
+            return {"cluster": cluster, "pods": [], "metrics": None, "error": "Login failed"}
+
+        cluster_results = {
+            "cluster": cluster,
+            "pods": [],
+            "metrics": None,
+            "restart_results": {}
+        }
+
+        # Get metrics before restart
+        cluster_results["metrics"] = get_pod_metrics(config["deployment_id"], cluster)
+        
+        if config.get("restart_required", "False").lower() == "true":
+            print(f"♻️ Restarting deployments in {cluster}")
+            cluster_results["restart_results"] = restart_aapc(
+                config["deployment_id"], 
+                config["exclude_services_restart"],
+                cluster,
+                cluster_deployments
+            )
+            print(f"⏱ Waiting {config['wait_time']} seconds for pods to stabilize...")
+            time.sleep(config["wait_time"])
+
+        # Get pod details after restart
+        cluster_results["pods"] = get_pods_with_details(config["deployment_id"], cluster)
+        
+        # Get metrics after restart
+        cluster_results["metrics_after"] = get_pod_metrics(config["deployment_id"], cluster)
+
+        logout_mks_cluster(cluster)
+        return cluster_results
+
+    except Exception as e:
+        print(f"❌ Error in cluster {cluster}: {e}")
+        try:
+            logout_mks_cluster(cluster)
+        except:
+            pass
+        return {"cluster": cluster, "pods": [], "metrics": None, "error": str(e)}
+
+
+def send(html_text, sub, mails, sender):
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    from email.utils import formataddr
+    from email.header import Header
+
+    msg = MIMEMultipart("alternative")
+    msg["From"] = formataddr(((str(Header("Statement", "utf-8"))), sender))
+    msg["To"] = mails
+    msg["Subject"] = sub
+    body = MIMEText(html_text, "html")
+    msg.attach(body)
+
+    server = smtplib.SMTP()
+    server.connect("smtp-hub.ms.com")
+    server.sendmail(sender, mails.split(","), msg.as_string())
+    server.close()
+
+
+def report_conversion(all_results):
+    # Check status - RED if any pod is not Running or if restart failed
+    status_flag = "GREEN"
+    
+    all_pods = []
+    for result in all_results:
+        all_pods.extend(result.get("pods", []))
+    
+    # Check pod statuses
+    for pod in all_pods:
+        if pod["status"] != "Running":
+            status_flag = "RED"
+            break
+    
+    # Check if any cluster had errors
+    for result in all_results:
+        if "error" in result:
+            status_flag = "RED"
+            break
+    
+    # Generate metrics section
+    metrics_html = "<h3>📊 Deployment Metrics</h3>"
+    
+    for result in all_results:
+        cluster = result["cluster"]
+        metrics = result.get("metrics", {})
+        metrics_after = result.get("metrics_after", {})
+        
+        metrics_html += f"""
+        <div style="margin-bottom: 20px; border: 1px solid #ccc; padding: 10px;">
+            <h4>Cluster: {cluster}</h4>
+        """
+        
+        if "error" in result:
+            metrics_html += f"<p style='color: red;'>Error: {result['error']}</p>"
+            continue
+        
+        if metrics:
+            metrics_html += f"""
+            <p><strong>Deployments:</strong> {len(metrics.get('deployments', []))}</p>
+            <p><strong>Pods Before Restart:</strong> {len(metrics.get('pods', []))}</p>
+            """
+            
+            if metrics_after:
+                metrics_html += f"<p><strong>Pods After Restart:</strong> {len(metrics_after.get('pods', []))}</p>"
+            
+            # Show restart results
+            restart_results = result.get("restart_results", {})
+            if restart_results:
+                success_count = sum(1 for success in restart_results.values() if success)
+                metrics_html += f"""
+                <p><strong>Deployments Restarted:</strong> {success_count}/{len(restart_results)} successful</p>
+                """
+    
+    # Generate pod details table
+    pods_html = """
+    <h3>📋 Pod Details</h3>
+    <table border="1" cellspacing="0" cellpadding="4" style="width: 100%;">
+        <tr style="background-color: #f2f2f2;">
+            <th>S.No</th>
+            <th>Cluster</th>
+            <th>Pod Name</th>
+            <th>Status</th>
+            <th>Start Time</th>
+            <th>Uptime</th>
+        </tr>
+    """
+    
+    for i, pod in enumerate(all_pods):
+        status_color = "green" if pod["status"] == "Running" else "red"
+        pods_html += f"""
+        <tr>
+            <td>{i+1}</td>
+            <td>{pod['cluster']}</td>
+            <td>{pod['pod']}</td>
+            <td style="color: {status_color};">{pod['status']}</td>
+            <td>{pod['start_time']}</td>
+            <td>{pod['uptime']}</td>
+        </tr>
+        """
+    
+    pods_html += "</table>"
+    
+    # Combine everything
+    html_content = f"""
+    <html>
+    <head>
+        <title>Deployment Report</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 20px; }}
+            h3 {{ color: #333; }}
+            table {{ border-collapse: collapse; width: 100%; margin-bottom: 20px; }}
+            th, td {{ padding: 8px; text-align: left; border: 1px solid #ddd; }}
+            th {{ background-color: #f2f2f2; }}
+            .status-red {{ color: red; }}
+            .status-green {{ color: green; }}
+        </style>
+    </head>
+    <body>
+        <h2 style="color: {'green' if status_flag == 'GREEN' else 'red'};">
+            PNSRT Deployment's Restart Report - Status: {status_flag}
+        </h2>
+        <p>Report generated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        
+        {metrics_html}
+        {pods_html}
+    </body>
+    </html>
+    """
+    
+    return html_content, status_flag
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python script.py <config_file>")
+        sys.exit(1)
+
+    config_path = sys.argv[1]
+    with open(config_path, "r") as f:
+        config = json.load(f)
+
+    # Step 1: Get deployments for all clusters first
+    print("📋 Gathering deployments from all clusters...")
+    deployments_by_cluster = get_all_deployments(config)
+    
+    # Create a mapping of cluster to its deployments
+    cluster_deployments_map = {}
+    for cluster, deployments in deployments_by_cluster:
+        cluster_deployments_map[cluster] = deployments
+        print(f"📊 Cluster {cluster} has {len(deployments)} deployments")
+
+    all_results = []
+
+    # Step 2: Run clusters concurrently with their deployment details
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(config["clusters"])) as executor:
+        # Submit tasks with cluster-specific deployments
+        future_to_cluster = {}
+        for cluster in config["clusters"]:
+            cluster_deployments = cluster_deployments_map.get(cluster, [])
+            future = executor.submit(
+                process_cluster, 
+                cluster, 
+                config, 
+                cluster_deployments
+            )
+            future_to_cluster[future] = cluster
+        
+        # Process results as they complete
+        for future in concurrent.futures.as_completed(future_to_cluster):
+            cluster = future_to_cluster[future]
+            try:
+                result = future.result()
+                all_results.append(result)
+                print(f"✅ Finished processing {cluster}")
+            except Exception as e:
+                print(f"❌ Cluster {cluster} failed: {e}")
+                all_results.append({
+                    "cluster": cluster, 
+                    "pods": [], 
+                    "metrics": None, 
+                    "error": str(e)
+                })
+
+    # Step 3: Generate and send report
+    html_report, status_flag = report_conversion(all_results)
+    send(
+        html_report,
+        f"{status_flag} {config['email']['subject']}",
+        config["email"]["receiver"],
+        config["email"]["sender"],
+    )
+    print("📨 Email report sent!")
+
+
+if __name__ == "__main__":
+    main()
