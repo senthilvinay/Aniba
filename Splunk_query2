@@ -1,0 +1,46 @@
+spl
+index="log-10368-prod-c" "C:\\BuildOperationService" ("--START---GetBulkCorpActionPendingJournals" OR "--END---GetBulkPendingCorpJornals---")
+| eval event_type = case(
+    searchmatch("\"--START---GetBulkCorpActionPendingJournals\""), "start",
+    searchmatch("\"--END---GetBulkPendingCorpJornals---\""), "end"
+)
+| sort _time
+| streamstats current=f last(_time) as start_time by event_type
+| where event_type="end" AND start_time IS NOT NULL
+| eval execution_time = _time - start_time
+| stats 
+    avg(execution_time) as avg_execution_time_seconds,
+    max(execution_time) as max_execution_time_seconds,
+    min(execution_time) as min_execution_time_seconds,
+    count as total_executions
+| eval 
+    avg_execution_time = round(avg_execution_time_seconds, 3),
+    max_execution_time = round(max_execution_time_seconds, 3),
+    min_execution_time = round(min_execution_time_seconds, 3)
+| table total_executions, avg_execution_time, max_execution_time, min_execution_time
+If you want to see individual execution times:
+
+spl
+index="log-10368-prod-c" "C:\\BuildOperationService" ("--START---GetBulkCorpActionPendingJournals" OR "--END---GetBulkPendingCorpJornals---")
+| eval event_type = case(
+    searchmatch("\"--START---GetBulkCorpActionPendingJournals\""), "start",
+    searchmatch("\"--END---GetBulkPendingCorpJornals---\""), "end"
+)
+| sort _time
+| streamstats current=f last(_time) as start_time by event_type
+| where event_type="end" AND start_time IS NOT NULL
+| eval execution_time_seconds = round(_time - start_time, 3)
+| table _time, start_time, execution_time_seconds
+| sort _time
+Alternative using transaction with explicit time calculation:
+
+spl
+index="log-10368-prod-c" "C:\\BuildOperationService" ("--START---GetBulkCorpActionPendingJournals" OR "--END---GetBulkPendingCorpJornals---")
+| transaction startswith="--START---GetBulkCorpActionPendingJournals" endswith="--END---GetBulkPendingCorpJornals---" maxspan=10m
+| eval execution_time = max(_time) - min(_time)
+| stats 
+    avg(execution_time) as avg_execution_time,
+    max(execution_time) as max_execution_time,
+    min(execution_time) as min_execution_time,
+    count as total_executions
+The streamstats approach is usually more reliable because it explicitly calculates the time difference between matching START and END events. The execution time will be in seconds.
