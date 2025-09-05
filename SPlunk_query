@@ -1,0 +1,49 @@
+spl
+index="log-10368-prod-c" "C:\\BuildOperationService" ("--START---GetBulkCorpActionPendingJournals" OR "--END---GetBulkPendingCorpJornals---")
+| transaction startswith="--START---GetBulkCorpActionPendingJournals" endswith="--END---GetBulkPendingCorpJornals---" maxspan=10m
+| eval duration = duration
+| table _time, duration
+| stats avg(duration) as avg_duration, max(duration) as max_duration, min(duration) as min_duration, count as total_executions
+Alternative approach using streamstats (more precise):
+
+spl
+index="log-10368-prod-c" "C:\\BuildOperationService" ("--START---GetBulkCorpActionPendingJournals" OR "--END---GetBulkPendingCorpJornals---")
+| eval type = case(
+    like(message, "%--START---GetBulkCorpActionPendingJournals%"), "start",
+    like(message, "%--END---GetBulkPendingCorpJornals---%"), "end"
+)
+| sort _time
+| streamstats current=f last(_time) as prev_time by type
+| where type="end" AND prev_time IS NOT NULL
+| eval execution_time = _time - prev_time
+| stats avg(execution_time) as avg_execution_time, max(execution_time) as max_execution_time, min(execution_time) as min_execution_time, count as total_operations
+To see individual execution times:
+
+spl
+index="log-10368-prod-c" "C:\\BuildOperationService" ("--START---GetBulkCorpActionPendingJournals" OR "--END---GetBulkPendingCorpJornals---")
+| transaction startswith="--START---GetBulkCorpActionPendingJournals" endswith="--END---GetBulkPendingCorpJornals---" maxspan=10m
+| eval execution_time = duration
+| table _time, execution_time
+| eval execution_time_seconds = round(execution_time, 3)
+| sort _time
+Key points about the query:
+
+transaction command: Groups START and END events together as a single transaction
+
+maxspan=10m: Assumes no execution takes longer than 10 minutes (adjust if needed)
+
+duration: Automatically calculates the time difference between start and end events
+
+stats: Provides summary statistics (average, max, min execution times)
+
+The query will give you:
+
+Average execution time
+
+Maximum execution time
+
+Minimum execution time
+
+Total number of executions
+
+You can adjust the maxspan parameter if your executions typically take longer than 10 minutes.
