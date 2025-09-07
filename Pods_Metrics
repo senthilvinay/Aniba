@@ -1,0 +1,100 @@
+from collections import Counter
+from datetime import datetime
+
+def compute_cluster_metrics(cluster, deployments, pods_before, pods_after, restart_start, restart_end):
+    metrics = {}
+    metrics["cluster"] = cluster
+    metrics["deployments_total"] = len(deployments)
+    metrics["deployments_restarted"] = len(deployments)  # adjust if excluding some
+    metrics["deployments_healthy"] = sum(
+        1 for d in deployments if all(p["status"].lower() == "running" for p in pods_after if d in p["name"])
+    )
+
+    # Count pod states
+    before_states = Counter(p["status"] for p in pods_before)
+    after_states = Counter(p["status"] for p in pods_after)
+
+    metrics["pods_before_total"] = len(pods_before)
+    metrics["pods_before_running"] = before_states.get("Running", 0)
+    metrics["pods_before_failed"] = len(pods_before) - metrics["pods_before_running"]
+
+    metrics["pods_after_total"] = len(pods_after)
+    metrics["pods_after_running"] = after_states.get("Running", 0)
+    metrics["pods_after_failed"] = len(pods_after) - metrics["pods_after_running"]
+
+    # Recovery
+    recovered = sum(
+        1 for p in pods_after
+        if p["status"].lower() == "running" and any(pb["pod"] == p["pod"] and pb["status"].lower() != "running" for pb in pods_before)
+    )
+    unrecovered = sum(1 for p in pods_after if p["status"].lower() != "running")
+    metrics["recovered_pods"] = recovered
+    metrics["unrecovered_pods"] = unrecovered
+
+    # State breakdown
+    metrics["pod_state_breakdown_after"] = dict(after_states)
+
+    # Restart duration
+    metrics["restart_duration"] = str(restart_end - restart_start).split(".")[0]  # drop microseconds
+
+    return metrics
+
+
+
+
+def render_metrics_html(metrics_list):
+    html = """
+    <h2>Cluster Restart Metrics</h2>
+    <table border="1" cellpadding="5" cellspacing="0" style="border-collapse:collapse; font-size:14px;">
+      <tr style="background-color:#f2f2f2;">
+        <th>Cluster</th>
+        <th>Deployments Total</th>
+        <th>Deployments Restarted</th>
+        <th>Deployments Healthy</th>
+        <th>Pods Before (Run/Fail)</th>
+        <th>Pods After (Run/Fail)</th>
+        <th>Recovered Pods</th>
+        <th>Unrecovered Pods</th>
+        <th>Pod States After</th>
+        <th>Restart Duration</th>
+      </tr>
+    """
+    for m in metrics_list:
+        html += f"""
+        <tr>
+          <td>{m['cluster']}</td>
+          <td>{m['deployments_total']}</td>
+          <td>{m['deployments_restarted']}</td>
+          <td>{m['deployments_healthy']}</td>
+          <td>{m['pods_before_running']}/{m['pods_before_failed']}</td>
+          <td>{m['pods_after_running']}/{m['pods_after_failed']}</td>
+          <td>{m['recovered_pods']}</td>
+          <td>{m['unrecovered_pods']}</td>
+          <td>{m['pod_state_breakdown_after']}</td>
+          <td>{m['restart_duration']}</td>
+        </tr>
+        """
+    html += "</table>"
+    return html
+
+
+all_metrics = []
+
+for cluster in config["clusters"]:
+    restart_start = datetime.now()
+    # login → get pods_before → restart → wait → get pods_after
+    restart_end = datetime.now()
+
+    cluster_metrics = compute_cluster_metrics(
+        cluster,
+        deployments,
+        pods_before,
+        pods_after,
+        restart_start,
+        restart_end,
+    )
+    all_metrics.append(cluster_metrics)
+
+# Build email
+dep_status_html = render_metrics_html(all_metrics)
+send(dep_status_html, subject, receiver, sender, attachment_path=csv_file)
