@@ -1,0 +1,30 @@
+#!/bin/bash
+
+CONFIG_FILE="/path/to/config.json"
+CSV_FILE="cluster_restart_status.csv"
+
+# Reset CSV before starting
+> "$CSV_FILE"
+
+# Extract clusters list using python
+clusters=$(/ms/dist/python/PROJ/core/3.11.4-1/bin/python -c \
+"import json; c=json.load(open('$CONFIG_FILE')); print(' '.join(c['clusters']))")
+
+pids=()
+
+# Launch each cluster restart in background
+for cluster in $clusters; do
+    echo "=== Triggering $cluster ==="
+    /ms/dist/python/PROJ/core/3.11.4-1/bin/python cluster_restart_monitor.py "$CONFIG_FILE" "$cluster" "$CSV_FILE" &
+    pids+=($!)   # store process ID
+    sleep 5      # short gap so they don’t hammer API at once
+done
+
+# Wait for all clusters to finish
+for pid in "${pids[@]}"; do
+    wait $pid
+done
+
+# Now send email
+echo "=== Sending final report email ==="
+/ms/dist/python/PROJ/core/3.11.4-1/bin/python cluster_restart_monitor.py "$CONFIG_FILE" send_email "$CSV_FILE"
