@@ -1,0 +1,161 @@
+#!/bin/bash
+CONFIG_FILE="/path/to/config.json"
+CSV_FILE="cluster_restart_status.csv"
+
+# Get clusters list from JSON (using python, no jq)
+clusters=$(python3 -c "import json; f=open('$CONFIG_FILE'); c=json.load(f); print(' '.join(c['clusters']))")
+
+# Clean CSV before run
+rm -f "$CSV_FILE"
+echo "Cluster,Pod,Status,Reboot_Time" > "$CSV_FILE"
+
+# Run sequentially for each cluster
+for cluster in $clusters; do
+    echo "=== Processing $cluster ==="
+    /ms/dist/python/PROJ/core/3.11.4-1/bin/python cluster_restart_monitor.py "$CONFIG_FILE" "$cluster" "$CSV_FILE"
+done
+
+# After loop, send email (final step)
+echo "Sending final email..."
+/ms/dist/python/PROJ/core/3.11.4-1/bin/python cluster_restart_monitor.py "$CONFIG_FILE" "send_email" "$CSV_FILE"
+
+
+#######################################################################################
+#!/ms/dist/python/PROJ/core/3.11.4-1/bin/python
+
+import sys, json, time, csv
+from datetime import datetime
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.utils import formataddr, Header
+import app_base
+
+# =====================
+# CLUSTER OPS
+# =====================
+def login_mks_cluster(mks_cluster):
+    print(f"Logging in to {mks_cluster}")
+    cmd = ["/ms/dist/cloud/PROJ/unimatrix/prod/bin/unimatrix", "login", mks_cluster]
+    return app_base.execute_command(cmd, 60).returncode == 0
+
+def logout_mks_cluster(mks_cluster):
+    print(f"Logging out from {mks_cluster}")
+    cmd = ["/ms/dist/cloud/PROJ/unimatrix/prod/bin/unimatrix", "logout", mks_cluster]
+    return app_base.execute_command(cmd, 60).returncode == 0
+
+def get_deployments(namespace):
+    cmd = ["/ms/dist/cloud/PROJ/kubectl/prod/bin/kubectl", "get", "deployments", "-o", "json", "-n", namespace]
+    raw = app_base.execute_command(cmd, 30)
+    data = json.loads(raw.stdout.decode("utf-8"))
+    return [item["metadata"]["name"] for item in data["items"]]
+
+def restart_deployment(namespace, dep):
+    cmd = ["/ms/dist/cloud/PROJ/kubectl/prod/bin/kubectl", "rollout", "restart", "deployment", dep, "-n", namespace]
+    return app_base.execute_command(cmd, 600).returncode == 0
+
+def get_pods(namespace):
+    cmd = ["/ms/dist/cloud/PROJ/kubectl/prod/bin/kubectl", "get", "pods", "-n", namespace]
+    raw = app_base.execute_command(cmd, 30)
+    lines = raw.stdout.decode("utf-8").split("\n")[1:]
+    pods = []
+    for line in lines:
+        if not line.strip():
+            continue
+        parts = line.split()
+        pod_name = parts[0]
+        pod_status = parts[2] if len(parts) > 2 else ""
+        pods.append({"pod": pod_name, "status": pod_status})
+    return pods
+
+def wait_for_pods(namespace, wait_time=300):
+    start = time.time()
+    while time.time() - start < wait_time:
+        pods = get_pods(namespace)
+        not_ready = [p for p in pods if p["status"].lower() != "running"]
+        if not not_ready:
+            return pods
+        print("Waiting for pods to stabilize...")
+        time.sleep(15)
+    return pods
+
+# =====================
+# EMAIL
+# =====================
+def send_email(csv_file, config, status_flag):
+    with open(csv_file) as f:
+        csv_content = f.read()
+
+    html_content = f"""
+    <html>
+    <body>
+    <p>Dear Team,</p>
+    <p>Please find the status of deployments after restarting all POD instances.</p>
+    <pre>{csv_content}</pre>
+    <p>Thank you,<br>PNSRT ASG</p>
+    </body>
+    </html>
+    """
+
+    msg = MIMEMultipart("alternative")
+    msg["From"] = formataddr((str(Header("Deployment Bot", "utf-8")), config["email"]["sender"]))
+    msg["To"] = config["email"]["receiver"]
+    msg["Subject"] = f"{status_flag} {config['email']['subject']}"
+
+    msg.attach(MIMEText(html_content, "html"))
+
+    server = smtplib.SMTP("smtp-hub.ms.com")
+    server.sendmail(config["email"]["sender"], config["email"]["receiver"].split(","), msg.as_string())
+    server.quit()
+
+# =====================
+# MAIN
+# =====================
+def main():
+    if len(sys.argv) < 3:
+        print("Usage: cluster_restart_monitor.py <config.json> <cluster|send_email> <csv_file>")
+        sys.exit(1)
+
+    config_file = sys.argv[1]
+    target = sys.argv[2]
+    csv_file = sys.argv[3]
+
+    with open(config_file, "r") as f:
+        config = json.load(f)
+
+    namespace = config["deployment_id"]
+    exclude = set(config["exclude_services_restart"])
+    wait_time = config.get("wait_time", 420)
+
+    # Email mode
+    if target == "send_email":
+        rows = []
+        with open(csv_file) as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+        status_flag = "RED" if any(r["Status"].lower() != "running" for r in rows) else "GREEN"
+        send_email(csv_file, config, status_flag)
+        return
+
+    # Cluster mode
+    cluster = target
+    if not login_mks_cluster(cluster):
+        print(f"Login failed for {cluster}")
+        return
+
+    deployments = get_deployments(namespace)
+    for dep in deployments:
+        if dep not in exclude:
+            restart_deployment(namespace, dep)
+
+    pods_status = wait_for_pods(namespace, wait_time)
+
+    with open(csv_file, "a", newline="") as f:
+        writer = csv.writer(f)
+        for pod in pods_status:
+            writer.writerow([cluster, pod["pod"], pod["status"], datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+
+    logout_mks_cluster(cluster)
+
+if __name__ == "__main__":
+    main()
