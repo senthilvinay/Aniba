@@ -1,11 +1,17 @@
-def login_mks_cluster(mks_cluster):
-    kubeconfig = os.environ.get("KUBECONFIG", f"/tmp/kubeconfig_{mks_cluster}")
+def login_mks_cluster(cluster):
+    kubeconfig = f"/tmp/kubeconfig_{cluster}"
+    env = os.environ.copy()
+    env["KUBECONFIG"] = kubeconfig
+
     command = [
         "/ms/dist/cloud/PROJ/unimatrix/prod/bin/unimatrix",
-        "login",
-        "--kubeconfig", kubeconfig,   # if unimatrix supports explicit kubeconfig
-        mks_cluster
+        "login", cluster
     ]
-    print(f"Logging into {mks_cluster} with {kubeconfig}")
-    login_raw = app_base.execute_command(command, 60)
-    return "MKS login completed" in login_raw.stdout.decode("utf-8")
+    print(f"Logging into {cluster} with {kubeconfig}")
+    login_output = subprocess.run(command, env=env, capture_output=True, text=True)
+
+    if "MKS login completed" in login_output.stdout:
+        return True
+    else:
+        print(f"Login failed for {cluster}: {login_output.stdout}")
+        return False
