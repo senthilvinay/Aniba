@@ -1,0 +1,11 @@
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo   # built-in, no external package needed
+
+def convert_to_est(utc_time_str):
+    if not utc_time_str:
+        return "-"
+    # Parse the ISO UTC time from OpenShift (usually ends with Z)
+    utc_dt = datetime.fromisoformat(utc_time_str.replace("Z", "+00:00"))
+    # Convert to EST
+    est_tz = ZoneInfo("America/New_York")
+    return utc_dt.astimezone(est_tz).strftime("%Y-%m-%d %H:%M:%S %Z")
