@@ -1,0 +1,211 @@
+#!/ms/dist/python/PROJ/core/3.11.4-1/bin/python
+
+import os, sys, json, time, csv
+import app_base
+from datetime import datetime
+import pytz
+
+# ================== CLUSTER LOGIN / LOGOUT ==================
+
+def login_mks_cluster(cluster):
+    print(f"🔑 Logging in: {cluster}")
+    cmd = ["/ms/dist/cloud/PROJ/unimatrix/prod/bin/unimatrix", "login", cluster]
+    res = app_base.execute_command(cmd, 60)
+    return "MKS login completed" in res.stdout.decode("utf-8")
+
+def logout_mks_cluster(cluster):
+    print(f"🔑 Logging out: {cluster}")
+    cmd = ["/ms/dist/cloud/PROJ/unimatrix/prod/bin/unimatrix", "logout", cluster]
+    res = app_base.execute_command(cmd, 60)
+    return "MKS logout completed" in res.stdout.decode("utf-8")
+
+# ================== TIME HELPERS ==================
+
+def to_est(ts):
+    """Convert ISO8601 UTC timestamp string to EST formatted string"""
+    if ts in (None, "N/A"):
+        return "N/A"
+    try:
+        utc_dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        est_tz = pytz.timezone("US/Eastern")
+        return utc_dt.astimezone(est_tz).strftime("%Y-%m-%d %H:%M:%S %Z")
+    except Exception:
+        return ts
+
+def now_est():
+    """Return current EST time formatted string"""
+    est_tz = pytz.timezone("US/Eastern")
+    return datetime.now(est_tz).strftime("%Y-%m-%d %H:%M:%S %Z")
+
+# ================== PODS / DEPLOYMENTS ==================
+
+def get_deployments(namespace):
+    deployments = []
+    cmd = ["/ms/dist/cloud/PROJ/kubectl/prod/bin/kubectl", "get", "deployments", "-o", "json", "-n", namespace]
+    raw = app_base.execute_command(cmd, 30)
+    data = json.loads(raw.stdout.decode("utf-8"))
+    for item in data["items"]:
+        deployments.append(item["metadata"]["name"])
+    return deployments
+
+def restart_deployment(namespace, deployment):
+    cmd = ["/ms/dist/cloud/PROJ/kubectl/prod/bin/kubectl", "rollout", "restart", "deployment", deployment, "-n", namespace]
+    print(f"♻ Restarting: {deployment}")
+    res = app_base.execute_command(cmd, 300)
+    return res.returncode == 0
+
+def get_pods(namespace):
+    cmd = ["/ms/dist/cloud/PROJ/kubectl/prod/bin/kubectl", "get", "pods", "-o", "json", "-n", namespace]
+    raw = app_base.execute_command(cmd, 30)
+    data = json.loads(raw.stdout.decode("utf-8"))
+
+    pods = []
+    for item in data["items"]:
+        pod_name = item["metadata"]["name"]
+        status = item["status"].get("phase", "UNKNOWN")
+        start_time = item["status"].get("startTime", "N/A")  # actual pod start time (UTC)
+        pods.append({
+            "pod": pod_name,
+            "status": status,
+            "reboot_time": to_est(start_time)  # convert to EST
+        })
+    return pods
+
+# ================== CSV WRITER ==================
+
+def write_csv(file, cluster, pods):
+    exists = os.path.isfile(file)
+    with open(file, "a", newline="") as f:
+        writer = csv.writer(f)
+        if not exists:
+            writer.writerow(["Cluster", "PodName", "Status", "RestartTime(EST)"])
+        for p in pods:
+            writer.writerow([cluster, p["pod"], p["status"], p["reboot_time"]])
+
+# ================== MAIN CLUSTER PROCESSOR ==================
+
+def process_cluster(cluster, config, csv_file):
+    if not login_mks_cluster(cluster):
+        print(f"❌ Login failed: {cluster}")
+        return []
+
+    results = []
+    if config["restart_required"].lower() == "true":
+        deployments = get_deployments(config["deployment_id"])
+        for dep in deployments:
+            if dep in config["exclude_services_restart"]:
+                continue
+            restart_deployment(config["deployment_id"], dep)
+
+        # Poll pods until Running or timeout
+        start = time.time()
+        while True:
+            pods = get_pods(config["deployment_id"])
+            write_csv(csv_file, cluster, pods)
+            results = pods
+            if all(p["status"] == "Running" for p in pods):
+                print(f"✅ All pods running in {cluster}")
+                break
+            if time.time() - start > config["wait_time"]:
+                print(f"⏳ Timeout reached for {cluster}")
+                break
+            time.sleep(30)  # poll interval
+    else:
+        results = get_pods(config["deployment_id"])
+        write_csv(csv_file, cluster, results)
+
+    logout_mks_cluster(cluster)
+    return results
+
+# ================== EMAIL REPORT ==================
+
+def send_email_report(config, all_results, csv_file):
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    from email.utils import formataddr
+    from email.mime.base import MIMEBase
+    from email import encoders
+    from email.header import Header
+    import smtplib
+
+    # Build metrics table
+    metrics_html = """
+    <table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse; font-family: Arial;">
+        <tr style="background-color:#4CAF50;color:white;">
+            <th>Cluster</th><th>Total Pods</th><th>Running</th><th>Others</th>
+        </tr>
+    """
+    for cluster, pods in all_results.items():
+        total = len(pods)
+        running = sum(1 for p in pods if p["status"] == "Running")
+        others = total - running
+        metrics_html += f"<tr><td>{cluster}</td><td>{total}</td><td>{running}</td><td>{others}</td></tr>"
+    metrics_html += "</table>"
+
+    # Detailed pod table
+    pod_html = """
+    <table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse; font-family: Arial;">
+        <tr style="background-color:#f2f2f2;">
+            <th>Cluster</th><th>Pod</th><th>Status</th><th>Restart Time (EST)</th>
+        </tr>
+    """
+    for cluster, pods in all_results.items():
+        for p in pods:
+            color = "red" if p["status"] != "Running" else "green"
+            pod_html += f"<tr><td>{cluster}</td><td>{p['pod']}</td><td style='color:{color};'>{p['status']}</td><td>{p['reboot_time']}</td></tr>"
+    pod_html += "</table>"
+
+    # Final HTML body
+    html = f"""
+    <p>Hi All,</p>
+    <p>Please find the PODS restart status with respect to each cluster.  
+       All timestamps are shown in <b>EST timezone</b>.</p>
+    <p><b>Report generated at:</b> {now_est()}</p>
+    <h3>Cluster-wise Summary</h3>
+    {metrics_html}
+    <h3>Detailed POD Status</h3>
+    {pod_html}
+    <p>Regards,<br>PNSRT ASG</p>
+    """
+
+    msg = MIMEMultipart()
+    msg["From"] = formataddr((str(Header("Cluster Monitor", "utf-8")), config["email"]["sender"]))
+    msg["To"] = config["email"]["receiver"]
+
+    # Subject with EST timestamp
+    msg["Subject"] = f"{config['email']['subject']} - {now_est()}"
+
+    msg.attach(MIMEText(html, "html"))
+
+    # Attach CSV
+    with open(csv_file, "rb") as f:
+        part = MIMEBase("application", "octet-stream")
+        part.set_payload(f.read())
+        encoders.encode_base64(part)
+        part.add_header("Content-Disposition", f"attachment; filename={os.path.basename(csv_file)}")
+        msg.attach(part)
+
+    server = smtplib.SMTP("smtp-hub.ms.com")
+    server.sendmail(config["email"]["sender"], config["email"]["receiver"].split(","), msg.as_string())
+    server.close()
+
+# ================== MAIN ==================
+
+if __name__ == "__main__":
+    config_file = sys.argv[1]
+    with open(config_file, "r") as f:
+        config = json.load(f)
+
+    csv_file = "pods_status.csv"
+    all_results = {}
+
+    for cluster in config["clusters"]:
+        print(f"\n=== Processing Cluster: {cluster} ===")
+        all_results[cluster] = process_cluster(cluster, config, csv_file)
+
+    # Email subject flag
+    status_flag = "RED" if any(p["status"] != "Running" for pods in all_results.values() for p in pods) else "GREEN"
+    config["email"]["subject"] = f"{status_flag} {config['email']['subject']}"
+
+    send_email_report(config, all_results, csv_file)
+    print("📧 Email report sent.")
