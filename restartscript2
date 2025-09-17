@@ -1,0 +1,143 @@
+#!/ms/dist/python/PROJ/core/3.11.4-1/bin/python
+
+import os, sys, json, time, csv
+import app_base
+
+# ================== CLUSTER LOGIN / LOGOUT ==================
+
+def login_mks_cluster(cluster):
+    print(f"🔑 Logging in: {cluster}")
+    command = ["/ms/dist/cloud/PROJ/unimatrix/prod/bin/unimatrix", "login", cluster]
+    res = app_base.execute_command(command, 60)
+    return "MKS login completed" in res.stdout.decode("utf-8")
+
+def logout_mks_cluster(cluster):
+    print(f"🔑 Logging out: {cluster}")
+    command = ["/ms/dist/cloud/PROJ/unimatrix/prod/bin/unimatrix", "logout", cluster]
+    res = app_base.execute_command(command, 60)
+    return "MKS logout completed" in res.stdout.decode("utf-8")
+
+# ================== PODS / DEPLOYMENTS ==================
+
+def get_deployments(namespace):
+    deployments = []
+    cmd = ["/ms/dist/cloud/PROJ/kubectl/prod/bin/kubectl", "get", "deployments", "-o", "json", "-n", namespace]
+    raw = app_base.execute_command(cmd, 30)
+    data = json.loads(raw.stdout.decode("utf-8"))
+    for item in data["items"]:
+        deployments.append(item["metadata"]["name"])
+    return deployments
+
+def restart_deployment(namespace, deployment):
+    cmd = [
+        "/ms/dist/cloud/PROJ/kubectl/prod/bin/kubectl",
+        "rollout", "restart", "deployment", deployment, "-n", namespace
+    ]
+    print(f"♻ Restarting: {deployment}")
+    res = app_base.execute_command(cmd, 300)
+    return res.returncode == 0
+
+def get_pods(namespace):
+    cmd = ["/ms/dist/cloud/PROJ/kubectl/prod/bin/kubectl", "get", "pods", "-n", namespace]
+    raw = app_base.execute_command(cmd, 30)
+    lines = raw.stdout.decode("utf-8").split("\n")[1:]
+    pods = []
+    for line in lines:
+        if not line.strip():
+            continue
+        parts = line.split()
+        pods.append({"pod": parts[0], "status": parts[2] if len(parts) > 2 else "UNKNOWN"})
+    return pods
+
+# ================== CSV WRITER ==================
+
+def write_csv(file, cluster, pods):
+    exists = os.path.isfile(file)
+    with open(file, "a", newline="") as f:
+        writer = csv.writer(f)
+        if not exists:
+            writer.writerow(["Cluster", "PodName", "Status", "Timestamp"])
+        for p in pods:
+            writer.writerow([cluster, p["pod"], p["status"], time.strftime("%Y-%m-%d %H:%M:%S")])
+
+# ================== MAIN RESTART LOGIC ==================
+
+def process_cluster(cluster, config, csv_file):
+    if not login_mks_cluster(cluster):
+        print(f"❌ Login failed: {cluster}")
+        return []
+
+    results = []
+    if config["restart_required"].lower() == "true":
+        deployments = get_deployments(config["deployment_id"])
+        for dep in deployments:
+            if dep in config["exclude_services_restart"]:
+                continue
+            restart_deployment(config["deployment_id"], dep)
+
+        # Poll until all pods running or timeout
+        start = time.time()
+        while True:
+            pods = get_pods(config["deployment_id"])
+            write_csv(csv_file, cluster, pods)
+            results = pods
+            if all(p["status"] == "Running" for p in pods):
+                print(f"✅ All pods running in {cluster}")
+                break
+            if time.time() - start > config["wait_time"]:
+                print(f"⏳ Timeout reached for {cluster}")
+                break
+            time.sleep(30)  # poll interval
+    else:
+        results = get_pods(config["deployment_id"])
+        write_csv(csv_file, cluster, results)
+
+    logout_mks_cluster(cluster)
+    return results
+
+# ================== EMAIL REPORT ==================
+
+def send_email_report(config, all_results):
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    from email.utils import formataddr
+    import smtplib
+    from email.header import Header
+
+    html = "<h3>POD Restart Report</h3><table border=1><tr><th>Cluster</th><th>Pod</th><th>Status</th></tr>"
+    for cluster, pods in all_results.items():
+        for p in pods:
+            html += f"<tr><td>{cluster}</td><td>{p['pod']}</td><td>{p['status']}</td></tr>"
+    html += "</table>"
+
+    msg = MIMEMultipart("alternative")
+    msg["From"] = formataddr((str(Header("Cluster Monitor", "utf-8")), config["email"]["sender"]))
+    msg["To"] = config["email"]["receiver"]
+    msg["Subject"] = config["email"]["subject"]
+
+    msg.attach(MIMEText(html, "html"))
+
+    server = smtplib.SMTP("smtp-hub.ms.com")
+    server.sendmail(config["email"]["sender"], config["email"]["receiver"].split(","), msg.as_string())
+    server.close()
+
+# ================== MAIN ==================
+
+if __name__ == "__main__":
+    config_file = sys.argv[1]
+    with open(config_file, "r") as f:
+        config = json.load(f)
+
+    csv_file = "pods_status.csv"
+    all_results = {}
+
+    for cluster in config["clusters"]:
+        print(f"\n=== Processing Cluster: {cluster} ===")
+        all_results[cluster] = process_cluster(cluster, config, csv_file)
+
+    # Check if any pods failed
+    status_flag = "RED" if any(p["status"] != "Running" for pods in all_results.values() for p in pods) else "GREEN"
+    config["email"]["subject"] = f"{status_flag} {config['email']['subject']}"
+
+    send_email_report(config, all_results)
+    print("📧 Email report sent.")
