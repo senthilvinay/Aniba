@@ -1,0 +1,78 @@
+import csv
+import datetime
+
+def monitor_cluster(cluster, config):
+    """Login → Restart → Wait → Collect pod status → Logout."""
+    results = []
+    try:
+        if not login_mks_cluster(cluster):
+            print(f"❌ Login failed: {cluster}")
+            return []
+
+        # Restart deployments if required
+        if config['restart_required'].lower() == "true":
+            restart_aapc(config['deployment_id'])   # skip exclude list here
+            time.sleep(config['wait_time'])
+
+        # Collect pods after wait
+        pods = get_pods(config['deployment_id'])
+        for pod in pods:
+            pod.update({
+                "cluster": cluster,
+                "reboot_time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
+        results.extend(pods)
+
+    finally:
+        logout_mks_cluster(cluster)
+    return results
+
+
+def write_csv(filename, all_results):
+    with open(filename, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["cluster", "name", "status", "reboot_time"])
+        writer.writeheader()
+        for row in all_results:
+            writer.writerow(row)
+
+
+def generate_metrics(all_results):
+    """Summarize pod statuses per cluster."""
+    metrics = {}
+    for r in all_results:
+        cluster = r["cluster"]
+        status = r["status"]
+        if cluster not in metrics:
+            metrics[cluster] = {"Running": 0, "Failed": 0, "Other": 0}
+        if status.lower() == "running":
+            metrics[cluster]["Running"] += 1
+        elif status.lower() in ["error", "crashloopbackoff", "failed"]:
+            metrics[cluster]["Failed"] += 1
+        else:
+            metrics[cluster]["Other"] += 1
+    return metrics
+
+
+if __name__ == "__main__":
+    path = sys.argv[1]
+    with open(path) as f:
+        config = json.load(f)
+
+    all_results = []
+    for cluster in config["clusters"]:
+        cluster_results = monitor_cluster(cluster, config)
+        all_results.extend(cluster_results)
+
+    # Write CSV
+    csv_file = "pods_status.csv"
+    write_csv(csv_file, all_results)
+
+    # Metrics
+    metrics = generate_metrics(all_results)
+    print(metrics)
+
+    # Email
+    status_flag = "RED" if any(r["status"] != "Running" for r in all_results) else "GREEN"
+    html = report_conversion(all_results)   # keep your HTML builder
+    send(html, f"{status_flag} {config['email']['subject']}", config['email']['receiver'], config['email']['sender'])
+
