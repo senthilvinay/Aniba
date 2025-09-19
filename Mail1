@@ -1,0 +1,12 @@
+Thanks for raising this. A common KB should be sufficient to cover both treadmill CPU utilization and pod container memory utilization, as the handling guidelines largely overlap.
+
+Regarding the restart approach:
+
+During business hours, it is not recommended to restart/delete pods directly, considering the potential impact on running services.
+
+For highly critical cases, we need to have confirmation from both Dev and ASG before taking any such action.
+
+Outside business hours, restart can be considered, but still keeping Dev/ASG alignment is best practice.
+
+
+This way we ensure consistency while also reducing risk in production
