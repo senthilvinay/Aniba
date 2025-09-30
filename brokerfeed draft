@@ -1,0 +1,50 @@
+Thanks for sharing this extra input 👍. I’ll merge it with the earlier context and create a clear, polished incident summary email for you.
+
+
+---
+
+Subject: Incident Summary – Broker Feed Data Load Failure (PROD)
+
+Dear Team,
+
+We encountered a Data Load Failure in PROD: Broker Feed Data Load. Please find the details below:
+
+Issue:
+
+The Broker Feed job failed on Tuesday because it was configured to read the previous day’s file (Monday).
+
+Since the scheduler and the MF job PBKRDBKP only run from Tuesday to Saturday, no file is generated on Sunday.
+
+As a result, the previous day file for Tuesday is not available, leading to failure.
+
+
+Impact:
+
+There is no functional impact to downstream systems, as Friday’s data continues to be used until Tuesday.
+
+oot Cause:
+
+Job dependency was on the previous day’s file.
+
+Missing file on Sunday caused Tuesday’s load to fail.
+
+
+Resolution Plan / Fix:
+
+1. Reschedule the Broker Feed job to 6:30 AM to ensure PBKRDBKP has completed and the file is available.
+
+
+2. Reconfigure the job to pick the same day’s file instead of the previous day’s file.
+
+
+3. This change is being implemented this week, after which Tuesday failures will be resolved.
+
+
+
+Next Steps:
+
+Post-change validation will be performed to confirm successful runs on Tuesday.
+
+Optional review: consider enabling a Sunday run in the long term to eliminate such gaps.
+
+
