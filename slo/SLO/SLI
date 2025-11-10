@@ -1,0 +1,79 @@
+1. SLO – Service Level Objective
+
+This is a target or goal for how reliable or available a service should be.
+
+🧠 Think of SLO as the “performance promise” you aim to achieve.
+
+✅ Example:
+
+“Our API should have 99.9% uptime per month.”
+“User requests should complete in under 300 ms 95% of the time.”
+
+So —
+
+Uptime SLO: 99.9%
+
+Latency SLO: 95% under 300ms
+
+🔹 2. SLI – Service Level Indicator
+
+This is the actual measurement of system performance — what you track to see if you meet your SLO.
+
+🧠 Think of SLI as “the real score” compared to the target.
+
+✅ Example:
+
+“This month, uptime was 99.7%.”
+“90% of requests completed under 300 ms.”
+
+SLI tells you how you’re doing, and SLO tells you what you aim for.
+
+🔹 3. Error Budget
+
+The “allowed failure margin” based on your SLO.
+It defines how much unreliability is acceptable before you must take action.
+
+🧠 Think of the error budget as a “forgiveness limit”.
+
+✅ Example:
+If your SLO = 99.9% uptime,
+then your error budget = 0.1% downtime per month.
+
+That’s about 43 minutes of downtime in a 30-day month.
+
+So if your system goes down for:
+
+10 minutes → still safe
+
+40 minutes → almost used up your error budget
+
+1 hour → SLO violated 🚨
+
+🔹 4. Error Budget Dashboard
+
+A visual dashboard (often in tools like Grafana, Datadog, or Google Cloud Monitoring) that shows:
+
+Current SLO compliance (e.g., 99.85%)
+
+Error budget remaining (e.g., 75% budget left)
+
+Alerts when the budget is exhausted
+
+Trends over time (e.g., last 30 days)
+
+✅ Purpose:
+It helps SRE teams balance:
+
+Reliability (uptime)
+
+Innovation speed (deployments)
+
+If your error budget is healthy, you can deploy more.
+If it’s used up, you should pause releases and fix stability.
+
+🧩 Example Summary
+Term	Meaning	Example
+SLI	Actual measured value	99.8% uptime this month
+SLO	Target reliability goal	99.9% uptime per month
+Error Budget	Allowed failure	0.1% downtime (≈43 mins)
+Error Budget Dashboard	Visual tracker	Shows % used, alerts when near limit
