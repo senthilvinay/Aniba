@@ -1,108 +1,76 @@
-import pandas as pd
-import numpy as np
-import os
-
 def generate_yoy_report(path_detail):
-    try:
-        # Define file paths
-        file_2023 = os.path.join(path_detail, "data_2023.csv")
-        file_2024 = os.path.join(path_detail, "data_2024.csv")
-        file_2025 = os.path.join(path_detail, "data_2025.csv")
+    import pandas as pd
+    import numpy as np
+    import os
 
-        # Check existence
-        for f in [file_2023, file_2024, file_2025]:
-            if not os.path.exists(f):
-                raise FileNotFoundError(f"Missing file: {f}")
+    # Load 3 years (2023, 2024, 2025)
+    files = {}
+    for yr in [2023, 2024, 2025]:
+        file = f"{path_detail}/data_{yr}.csv"
+        if os.path.exists(file):
+            df = pd.read_csv(file, names=["DATE", str(yr)])
+            df["DATE"] = pd.to_datetime(df["DATE"], errors='coerce')
+            # Force numeric conversion (important!)
+            df[str(yr)] = pd.to_numeric(df[str(yr)], errors='coerce')
+            files[yr] = df
 
-        # Read CSVs
-        df23 = pd.read_csv(file_2023)
-        df24 = pd.read_csv(file_2024)
-        df25 = pd.read_csv(file_2025)
+    if len(files) < 3:
+        print("⚠️ Missing one or more year files (2023, 2024, 2025).")
+        return None
 
-        # Rename for merging consistency
-        df23.columns = ["DATE_2023", "2023"]
-        df24.columns = ["DATE_2024", "2024"]
-        df25.columns = ["DATE_2025", "2025"]
+    # Merge all three years
+    df_merged = (
+        files[2023]
+        .merge(files[2024], on="DATE", how="outer", suffixes=("_2023", "_2024"))
+        .merge(files[2025], on="DATE", how="outer")
+    )
 
-        # Convert all numeric columns safely
-        for df in [df23, df24, df25]:
-            for col in df.columns:
-                if col.startswith("20"):  # Year columns only
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
+    # Sort and clean
+    df_merged = df_merged.sort_values(by="DATE").fillna(0)
 
-        # Merge by row order (assuming same daily order)
-        df_merged = pd.concat([df23, df24, df25], axis=1)
+    # Calculate YoY safely (avoid divide-by-zero)
+    df_merged["YoY Change 2023 vs 2025"] = np.where(
+        df_merged["2023"] != 0,
+        ((df_merged["2025"] - df_merged["2023"]) / df_merged["2023"]) * 100,
+        np.nan
+    )
+    df_merged["YoY Change 2024 vs 2025"] = np.where(
+        df_merged["2024"] != 0,
+        ((df_merged["2025"] - df_merged["2024"]) / df_merged["2024"]) * 100,
+        np.nan
+    )
 
-        # Compute YoY % changes
-        df_merged["YoY Change 2023 vs 2025"] = np.where(
-            (df_merged["2023"] > 0),
-            ((df_merged["2025"] - df_merged["2023"]) / df_merged["2023"]) * 100,
-            np.nan
-        )
-        df_merged["YoY Change 2024 vs 2025"] = np.where(
-            (df_merged["2024"] > 0),
-            ((df_merged["2025"] - df_merged["2024"]) / df_merged["2024"]) * 100,
-            np.nan
-        )
+    # Convert explicitly to numeric and round
+    df_merged["YoY Change 2023 vs 2025"] = (
+        pd.to_numeric(df_merged["YoY Change 2023 vs 2025"], errors="coerce").round(2)
+    )
+    df_merged["YoY Change 2024 vs 2025"] = (
+        pd.to_numeric(df_merged["YoY Change 2024 vs 2025"], errors="coerce").round(2)
+    )
 
-        # Round and format with %
-        df_merged["YoY Change 2023 vs 2025"] = df_merged["YoY Change 2023 vs 2025"].round(2).astype(str) + "%"
-        df_merged["YoY Change 2024 vs 2025"] = df_merged["YoY Change 2024 vs 2025"].round(2).astype(str) + "%"
+    # Duplicate DATE columns for visual layout
+    df_merged["DATE_2023"] = df_merged["DATE"]
+    df_merged["DATE_2024"] = df_merged["DATE"]
+    df_merged["DATE_2025"] = df_merged["DATE"]
 
-        # Output file
-        output_csv = os.path.join(path_detail, "YoY_Report_2025.csv")
-        df_merged.to_csv(output_csv, index=False)
+    # Final column order (like your snapshot)
+    final = df_merged[
+        [
+            "DATE_2023", "2023",
+            "DATE_2024", "2024",
+            "DATE_2025", "2025",
+            "YoY Change 2023 vs 2025",
+            "YoY Change 2024 vs 2025"
+        ]
+    ].copy()
 
-        # Generate HTML table for visualization
-        html_table = df_merged.to_html(
-            index=False,
-            border=0,
-            justify='center',
-            classes='dataframe',
-            table_id='yoy_table'
-        )
+    # Format DATE columns
+    for col in ["DATE_2023", "DATE_2024", "DATE_2025"]:
+        final[col] = pd.to_datetime(final[col], errors='coerce').dt.strftime("%m/%d/%Y")
 
-        # Add inline CSS styling (to match your screenshot)
-        styled_html = f"""
-        <html>
-        <head>
-        <style>
-            body {{ font-family: Arial, sans-serif; margin: 20px; }}
-            h2 {{ color: #2b3e50; }}
-            table {{
-                border-collapse: collapse;
-                width: 100%;
-                font-size: 13px;
-            }}
-            th {{
-                background-color: #34495e;
-                color: white;
-                padding: 8px;
-                text-align: center;
-            }}
-            td {{
-                border: 1px solid #999;
-                padding: 6px;
-                text-align: center;
-            }}
-            tr:nth-child(even) {{ background-color: #f2f2f2; }}
-        </style>
-        </head>
-        <body>
-            <h2>YoY Comparison Report (2023, 2024, 2025)</h2>
-            <p><b>Stats:</b></p>
-            {html_table}
-        </body>
-        </html>
-        """
+    # Save to CSV
+    output_file = f"{path_detail}/YoY_Comparison_Report.csv"
+    final.to_csv(output_file, index=False)
 
-        output_html = os.path.join(path_detail, "YoY_Report_2025.html")
-        with open(output_html, "w", encoding="utf-8") as f:
-            f.write(styled_html)
-
-        print(f"✅ YoY report successfully generated:\n{output_csv}\n{output_html}")
-        return output_csv, output_html
-
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        return None, None
+    print(f"✅ YoY comparison report created at {output_file}")
+    return final
