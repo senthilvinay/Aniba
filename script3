@@ -6,20 +6,41 @@ def generate_yoy_report(path_detail):
     years = [2023, 2024, 2025]
     data = {}
 
-    # Read all 3 yearly CSVs
+    # Load all year CSVs
     for yr in years:
         file = f"{path_detail}/data_{yr}.csv"
         if os.path.exists(file):
             df = pd.read_csv(file, header=None, names=[f"DATE_{yr}", str(yr)])
+            df[str(yr)] = pd.to_numeric(df[str(yr)], errors="coerce")
             data[yr] = df
         else:
             print(f"⚠️ Missing file: {file}")
             return None
 
-    # Merge side-by-side based on row position (not on DATE)
+    # Merge side-by-side
     merged = pd.concat([data[2023], data[2024], data[2025]], axis=1)
 
-    # Save merged report
+    # Calculate YoY %
+    merged["YoY 2025 vs 2023"] = ((merged["2025"] - merged["2023"]) / merged["2023"].replace(0, pd.NA)) * 100
+    merged["YoY 2025 vs 2024"] = ((merged["2025"] - merged["2024"]) / merged["2024"].replace(0, pd.NA)) * 100
+
+    # Round and format with emojis
+    def fmt(v):
+        if pd.isna(v):
+            return "-"
+        if v > 1000:
+            return f"{v:.1f}% 🚀"
+        elif v > 0:
+            return f"+{v:.1f}% 📈"
+        elif v < 0:
+            return f"{v:.1f}% 📉"
+        else:
+            return "0.0%"
+
+    merged["YoY 2025 vs 2023"] = merged["YoY 2025 vs 2023"].apply(fmt)
+    merged["YoY 2025 vs 2024"] = merged["YoY 2025 vs 2024"].apply(fmt)
+
+    # Save to CSV
     output_file = f"{path_detail}/YoY_Comparison_Report.csv"
     merged.to_csv(output_file, index=False)
 
