@@ -1,76 +1,27 @@
-def generate_yoy_report(path_detail):
-    import pandas as pd
-    import numpy as np
-    import os
+import os
+import pandas as pd
 
-    # Load 3 years (2023, 2024, 2025)
-    files = {}
-    for yr in [2023, 2024, 2025]:
+def generate_yoy_report(path_detail):
+    # Define years
+    years = [2023, 2024, 2025]
+    data = {}
+
+    # Read all 3 yearly CSVs
+    for yr in years:
         file = f"{path_detail}/data_{yr}.csv"
         if os.path.exists(file):
-            df = pd.read_csv(file, names=["DATE", str(yr)])
-            df["DATE"] = pd.to_datetime(df["DATE"], errors='coerce')
-            # Force numeric conversion (important!)
-            df[str(yr)] = pd.to_numeric(df[str(yr)], errors='coerce')
-            files[yr] = df
+            df = pd.read_csv(file, header=None, names=[f"DATE_{yr}", str(yr)])
+            data[yr] = df
+        else:
+            print(f"⚠️ Missing file: {file}")
+            return None
 
-    if len(files) < 3:
-        print("⚠️ Missing one or more year files (2023, 2024, 2025).")
-        return None
+    # Merge side-by-side based on row position (not on DATE)
+    merged = pd.concat([data[2023], data[2024], data[2025]], axis=1)
 
-    # Merge all three years
-    df_merged = (
-        files[2023]
-        .merge(files[2024], on="DATE", how="outer", suffixes=("_2023", "_2024"))
-        .merge(files[2025], on="DATE", how="outer")
-    )
-
-    # Sort and clean
-    df_merged = df_merged.sort_values(by="DATE").fillna(0)
-
-    # Calculate YoY safely (avoid divide-by-zero)
-    df_merged["YoY Change 2023 vs 2025"] = np.where(
-        df_merged["2023"] != 0,
-        ((df_merged["2025"] - df_merged["2023"]) / df_merged["2023"]) * 100,
-        np.nan
-    )
-    df_merged["YoY Change 2024 vs 2025"] = np.where(
-        df_merged["2024"] != 0,
-        ((df_merged["2025"] - df_merged["2024"]) / df_merged["2024"]) * 100,
-        np.nan
-    )
-
-    # Convert explicitly to numeric and round
-    df_merged["YoY Change 2023 vs 2025"] = (
-        pd.to_numeric(df_merged["YoY Change 2023 vs 2025"], errors="coerce").round(2)
-    )
-    df_merged["YoY Change 2024 vs 2025"] = (
-        pd.to_numeric(df_merged["YoY Change 2024 vs 2025"], errors="coerce").round(2)
-    )
-
-    # Duplicate DATE columns for visual layout
-    df_merged["DATE_2023"] = df_merged["DATE"]
-    df_merged["DATE_2024"] = df_merged["DATE"]
-    df_merged["DATE_2025"] = df_merged["DATE"]
-
-    # Final column order (like your snapshot)
-    final = df_merged[
-        [
-            "DATE_2023", "2023",
-            "DATE_2024", "2024",
-            "DATE_2025", "2025",
-            "YoY Change 2023 vs 2025",
-            "YoY Change 2024 vs 2025"
-        ]
-    ].copy()
-
-    # Format DATE columns
-    for col in ["DATE_2023", "DATE_2024", "DATE_2025"]:
-        final[col] = pd.to_datetime(final[col], errors='coerce').dt.strftime("%m/%d/%Y")
-
-    # Save to CSV
+    # Save merged report
     output_file = f"{path_detail}/YoY_Comparison_Report.csv"
-    final.to_csv(output_file, index=False)
+    merged.to_csv(output_file, index=False)
 
-    print(f"✅ YoY comparison report created at {output_file}")
-    return final
+    print(f"✅ YoY comparison report created successfully at: {output_file}")
+    return merged
