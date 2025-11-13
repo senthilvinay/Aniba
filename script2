@@ -2,7 +2,6 @@ import os
 import sys
 import pyodbc
 import csv
-import glob
 import configparser
 import pandas as pd
 from datetime import datetime
@@ -12,48 +11,28 @@ import emailscript2 as mailing
 # 1️⃣ DB CONNECTION + QUERY EXECUTION
 # -----------------------------
 def db_establishment(dbserver, dbname, query_list, path_detail):
-    statedetails = []
-    errordetails = []
     today_data = []
-
     try:
         connectString = f'DRIVER=FreeTDS;SERVERNAME={dbserver};DATABASE={dbname}'
         conn = pyodbc.connect(connectString)
         cursor = conn.cursor()
-        
+
         for eachquery in query_list:
-            try:
-                with open(eachquery, 'r') as fd:
-                    sqlFile = fd.read()
-                
-                cursor.execute(sqlFile)
-                jnl_position = cursor.fetchall()
-                print("Fetched:", jnl_position)
+            with open(eachquery, 'r') as fd:
+                sqlFile = fd.read()
+            cursor.execute(sqlFile)
+            jnl_position = cursor.fetchall()
+            print("Fetched:", jnl_position)
 
-                # Convert fetched results to CSV
-                if jnl_position:
-                    output_file = f"{path_detail}/{eachquery.split('/')[-1].replace('.txt', '.csv')}"
-                    with open(output_file, 'w', newline='') as fw:
-                        csv_out = csv.writer(fw)
-                        csv_out.writerow([tup[0] for tup in cursor.description])
-                        csv_out.writerows(jnl_position)
-
-                    # Assume format [(MM/DD/YY, value, count), ...]
-                    for row in jnl_position:
-                        today_data.append((row[0], row[1]))  # Take DATE and VALUE
-
-            except Exception as err:
-                print(f"Query execution failed: {err}")
-                errordetails.append(str(err))
-
+            if jnl_position:
+                for row in jnl_position:
+                    today_data.append((row[0], row[1]))  # (DATE, VALUE)
         cursor.close()
         conn.close()
 
     except Exception as e:
         print(f"Database connection error: {e}")
-        errordetails.append(str(e))
-        
-    return today_data, statedetails, errordetails
+    return today_data
 
 
 # -----------------------------
@@ -64,86 +43,104 @@ def append_to_yearly_csv(path_detail, today_data):
     yearly_file = f"{path_detail}/data_{current_year}.csv"
     os.makedirs(path_detail, exist_ok=True)
 
+    # Avoid duplicate entries
+    existing_dates = set()
+    if os.path.exists(yearly_file):
+        df_existing = pd.read_csv(yearly_file)
+        existing_dates = set(df_existing["DATE"].astype(str))
+
     with open(yearly_file, 'a', newline='') as f:
         writer = csv.writer(f)
         for date, value in today_data:
-            writer.writerow([date, value])
-
+            if str(date) not in existing_dates:
+                writer.writerow([date, value])
     print(f"Data appended to {yearly_file}")
     return yearly_file
 
 
 # -----------------------------
-# 3️⃣ YEAR-OVER-YEAR COMPARISON
+# 3️⃣ YEAR-OVER-YEAR COMPARISON (3-Year Merge)
 # -----------------------------
-def calculate_yoy(curr_df, prev_df, year_label_prev, year_label_curr):
-    merged = pd.merge(prev_df, curr_df, on='DATE', how='outer', suffixes=(f'_{year_label_prev}', f'_{year_label_curr}'))
-    merged[f'YoY_Change_{year_label_prev}_vs_{year_label_curr}'] = (
-        (merged[f'VALUE_{year_label_curr}'] - merged[f'VALUE_{year_label_prev}']) / merged[f'VALUE_{year_label_prev}'] * 100
-    ).round(2)
-    return merged
-
 def generate_yoy_report(path_detail):
-    current_year = datetime.now().year
-    df_curr = pd.read_csv(f"{path_detail}/data_{current_year}.csv", names=['DATE', 'VALUE'])
-    
-    reports = []
-    for past_year in [current_year - 1, current_year - 2]:
-        past_file = f"{path_detail}/data_{past_year}.csv"
-        if os.path.exists(past_file):
-            df_prev = pd.read_csv(past_file, names=['DATE', 'VALUE'])
-            report = calculate_yoy(df_curr, df_prev, past_year, current_year)
-            reports.append(report)
+    # Load 3 years (2023, 2024, 2025)
+    files = {}
+    for yr in [2023, 2024, 2025]:
+        file = f"{path_detail}/data_{yr}.csv"
+        if os.path.exists(file):
+            df = pd.read_csv(file, names=["DATE", str(yr)])
+            df["DATE"] = pd.to_datetime(df["DATE"], errors='coerce')
+            files[yr] = df
 
-    if not reports:
-        print("Not enough previous year data for YoY comparison.")
+    if len(files) < 3:
+        print("⚠️ Missing one or more year files (2023, 2024, 2025).")
         return None
 
-    # Merge all YoY comparisons side-by-side
-    final_report = reports[0]
-    if len(reports) > 1:
-        for r in reports[1:]:
-            final_report = pd.merge(final_report, r, on='DATE', how='outer')
+    # Merge side by side
+    df_merged = files[2023].merge(files[2024], on="DATE", how="outer", suffixes=("_2023", "_2024"))
+    df_merged = df_merged.merge(files[2025], on="DATE", how="outer")
 
-    final_report.to_csv(f"{path_detail}/YoY_Comparison_Report.csv", index=False)
-    print(f"YoY comparison report created at {path_detail}/YoY_Comparison_Report.csv")
-    return final_report
+    # Sort and clean
+    df_merged = df_merged.sort_values(by="DATE")
+    df_merged = df_merged.fillna(0)
+
+    # Calculate YoY %
+    df_merged["YoY Change 2023 vs 2025"] = ((df_merged["2025"] - df_merged["2023"]) / df_merged["2023"].replace(0, pd.NA)) * 100
+    df_merged["YoY Change 2024 vs 2025"] = ((df_merged["2025"] - df_merged["2024"]) / df_merged["2024"].replace(0, pd.NA)) * 100
+
+    # Round and format
+    df_merged["YoY Change 2023 vs 2025"] = df_merged["YoY Change 2023 vs 2025"].round(2)
+    df_merged["YoY Change 2024 vs 2025"] = df_merged["YoY Change 2024 vs 2025"].round(2)
+
+    # Reorder columns like snapshot
+    df_merged["DATE_2023"] = df_merged["DATE"]
+    df_merged["DATE_2024"] = df_merged["DATE"]
+    df_merged["DATE_2025"] = df_merged["DATE"]
+
+    final = df_merged[
+        ["DATE_2023", "2023", "DATE_2024", "2024", "DATE_2025", "2025",
+         "YoY Change 2023 vs 2025", "YoY Change 2024 vs 2025"]
+    ]
+
+    # Format date
+    final["DATE_2023"] = final["DATE_2023"].dt.strftime("%m/%d/%Y")
+    final["DATE_2024"] = final["DATE_2024"].dt.strftime("%m/%d/%Y")
+    final["DATE_2025"] = final["DATE_2025"].dt.strftime("%m/%d/%Y")
+
+    # Save
+    final.to_csv(f"{path_detail}/YoY_Comparison_Report.csv", index=False)
+    print(f"✅ YoY comparison report created at {path_detail}/YoY_Comparison_Report.csv")
+    return final
 
 
 # -----------------------------
 # 4️⃣ COLOR-CODED HTML REPORT
 # -----------------------------
 def colorize_value(val):
-    """Return inline style based on YoY % change."""
     try:
         v = float(val)
-        if v > 0:
-            return f'<td style="color:green;font-weight:bold;">{v:.2f}%</td>'
-        elif v < 0:
-            return f'<td style="color:red;font-weight:bold;">{v:.2f}%</td>'
-        else:
-            return f'<td style="color:gray;">{v:.2f}%</td>'
+        color = "green" if v > 0 else "red" if v < 0 else "gray"
+        suffix = " (Growth)" if v > 0 else " (Drop)" if v < 0 else ""
+        return f'<td style="color:{color};font-weight:bold;">{v:.2f}%{suffix}</td>'
     except:
-        return f'<td style="color:gray;">-</td>'
+        return "<td>-</td>"
 
 def generate_html_report(df):
-    # Build manual HTML to color code YoY columns
-    columns = df.columns.tolist()
     html = """<html><body>
-    <h3 style="font-family:Arial;">📊 Year-over-Year Comparison Report</h3>
-    <table border="1" cellspacing="0" cellpadding="6" style="border-collapse:collapse;font-family:Arial;font-size:12px;">
-    <tr style="background-color:#f2f2f2;font-weight:bold;">"""
-    for col in columns:
-        html += f"<th>{col}</th>"
-    html += "</tr>"
-
+    <h3 style="font-family:Arial;">📊 3-Year Volume Comparison (2023–2025)</h3>
+    <table border="1" cellspacing="0" cellpadding="6" style="border-collapse:collapse;font-family:Arial;font-size:12px;text-align:center;">
+    <tr style="background-color:#e0e0e0;font-weight:bold;">
+    <th>DATE (2023)</th><th>2023</th>
+    <th>DATE (2024)</th><th>2024</th>
+    <th>DATE (2025)</th><th>2025</th>
+    <th>YoY Change 2023 vs 2025</th><th>YoY Change 2024 vs 2025</th></tr>
+    """
     for _, row in df.iterrows():
         html += "<tr>"
-        for col in columns:
-            if "YoY_Change" in col:
-                html += colorize_value(row[col])
-            else:
-                html += f"<td>{row[col]}</td>"
+        html += f"<td>{row['DATE_2023']}</td><td>{row['2023']}</td>"
+        html += f"<td>{row['DATE_2024']}</td><td>{row['2024']}</td>"
+        html += f"<td>{row['DATE_2025']}</td><td>{row['2025']}</td>"
+        html += colorize_value(row["YoY Change 2023 vs 2025"])
+        html += colorize_value(row["YoY Change 2024 vs 2025"])
         html += "</tr>"
     html += "</table></body></html>"
     return html
@@ -158,13 +155,12 @@ if __name__ == '__main__':
     path_detail = config['Paths']['home_dir']
 
     all_today_data = []
-
     for eachsec in config.sections():
         if eachsec in ['Paths', 'error', 'stat']:
             continue
 
         query_list = [f"{path_detail}/query/{sub}" for sub in config[eachsec]['query_list'].split()]
-        today_data, statfiles, errorfiles = db_establishment(
+        today_data = db_establishment(
             config[eachsec]['dbserver'],
             config[eachsec]['dbname'],
             query_list,
@@ -176,17 +172,13 @@ if __name__ == '__main__':
         print("⚠️ No data fetched from database.")
         sys.exit(0)
 
-    # Append today's data to current year CSV
     append_to_yearly_csv(path_detail, all_today_data)
-
-    # Generate YoY report
     final_report = generate_yoy_report(path_detail)
 
-    # Send email if report available
     if final_report is not None:
         html_content = generate_html_report(final_report)
-        subject = f"YoY Comparison Report - {datetime.now().strftime('%d-%b-%Y')}"
+        subject = f"3-Year YoY Volume Comparison Report - {datetime.now().strftime('%d-%b-%Y')}"
         mailing.send(html_content, subject, "team@example.com", "noreply@example.com")
-        print("✅ YoY comparison email sent successfully.")
+        print("✅ Email sent successfully.")
     else:
-        print("Skipped email — insufficient data for comparison.")
+        print("⚠️ Skipped email – missing 3-year data.")
