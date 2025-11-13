@@ -1,0 +1,192 @@
+import os
+import sys
+import pyodbc
+import csv
+import glob
+import configparser
+import pandas as pd
+from datetime import datetime
+import emailscript2 as mailing
+
+# -----------------------------
+# 1️⃣ DB CONNECTION + QUERY EXECUTION
+# -----------------------------
+def db_establishment(dbserver, dbname, query_list, path_detail):
+    statedetails = []
+    errordetails = []
+    today_data = []
+
+    try:
+        connectString = f'DRIVER=FreeTDS;SERVERNAME={dbserver};DATABASE={dbname}'
+        conn = pyodbc.connect(connectString)
+        cursor = conn.cursor()
+        
+        for eachquery in query_list:
+            try:
+                with open(eachquery, 'r') as fd:
+                    sqlFile = fd.read()
+                
+                cursor.execute(sqlFile)
+                jnl_position = cursor.fetchall()
+                print("Fetched:", jnl_position)
+
+                # Convert fetched results to CSV
+                if jnl_position:
+                    output_file = f"{path_detail}/{eachquery.split('/')[-1].replace('.txt', '.csv')}"
+                    with open(output_file, 'w', newline='') as fw:
+                        csv_out = csv.writer(fw)
+                        csv_out.writerow([tup[0] for tup in cursor.description])
+                        csv_out.writerows(jnl_position)
+
+                    # Assume format [(MM/DD/YY, value, count), ...]
+                    for row in jnl_position:
+                        today_data.append((row[0], row[1]))  # Take DATE and VALUE
+
+            except Exception as err:
+                print(f"Query execution failed: {err}")
+                errordetails.append(str(err))
+
+        cursor.close()
+        conn.close()
+
+    except Exception as e:
+        print(f"Database connection error: {e}")
+        errordetails.append(str(e))
+        
+    return today_data, statedetails, errordetails
+
+
+# -----------------------------
+# 2️⃣ APPEND DAILY RESULT TO YEARLY CSV
+# -----------------------------
+def append_to_yearly_csv(path_detail, today_data):
+    current_year = datetime.now().year
+    yearly_file = f"{path_detail}/data_{current_year}.csv"
+    os.makedirs(path_detail, exist_ok=True)
+
+    with open(yearly_file, 'a', newline='') as f:
+        writer = csv.writer(f)
+        for date, value in today_data:
+            writer.writerow([date, value])
+
+    print(f"Data appended to {yearly_file}")
+    return yearly_file
+
+
+# -----------------------------
+# 3️⃣ YEAR-OVER-YEAR COMPARISON
+# -----------------------------
+def calculate_yoy(curr_df, prev_df, year_label_prev, year_label_curr):
+    merged = pd.merge(prev_df, curr_df, on='DATE', how='outer', suffixes=(f'_{year_label_prev}', f'_{year_label_curr}'))
+    merged[f'YoY_Change_{year_label_prev}_vs_{year_label_curr}'] = (
+        (merged[f'VALUE_{year_label_curr}'] - merged[f'VALUE_{year_label_prev}']) / merged[f'VALUE_{year_label_prev}'] * 100
+    ).round(2)
+    return merged
+
+def generate_yoy_report(path_detail):
+    current_year = datetime.now().year
+    df_curr = pd.read_csv(f"{path_detail}/data_{current_year}.csv", names=['DATE', 'VALUE'])
+    
+    reports = []
+    for past_year in [current_year - 1, current_year - 2]:
+        past_file = f"{path_detail}/data_{past_year}.csv"
+        if os.path.exists(past_file):
+            df_prev = pd.read_csv(past_file, names=['DATE', 'VALUE'])
+            report = calculate_yoy(df_curr, df_prev, past_year, current_year)
+            reports.append(report)
+
+    if not reports:
+        print("Not enough previous year data for YoY comparison.")
+        return None
+
+    # Merge all YoY comparisons side-by-side
+    final_report = reports[0]
+    if len(reports) > 1:
+        for r in reports[1:]:
+            final_report = pd.merge(final_report, r, on='DATE', how='outer')
+
+    final_report.to_csv(f"{path_detail}/YoY_Comparison_Report.csv", index=False)
+    print(f"YoY comparison report created at {path_detail}/YoY_Comparison_Report.csv")
+    return final_report
+
+
+# -----------------------------
+# 4️⃣ COLOR-CODED HTML REPORT
+# -----------------------------
+def colorize_value(val):
+    """Return inline style based on YoY % change."""
+    try:
+        v = float(val)
+        if v > 0:
+            return f'<td style="color:green;font-weight:bold;">{v:.2f}%</td>'
+        elif v < 0:
+            return f'<td style="color:red;font-weight:bold;">{v:.2f}%</td>'
+        else:
+            return f'<td style="color:gray;">{v:.2f}%</td>'
+    except:
+        return f'<td style="color:gray;">-</td>'
+
+def generate_html_report(df):
+    # Build manual HTML to color code YoY columns
+    columns = df.columns.tolist()
+    html = """<html><body>
+    <h3 style="font-family:Arial;">📊 Year-over-Year Comparison Report</h3>
+    <table border="1" cellspacing="0" cellpadding="6" style="border-collapse:collapse;font-family:Arial;font-size:12px;">
+    <tr style="background-color:#f2f2f2;font-weight:bold;">"""
+    for col in columns:
+        html += f"<th>{col}</th>"
+    html += "</tr>"
+
+    for _, row in df.iterrows():
+        html += "<tr>"
+        for col in columns:
+            if "YoY_Change" in col:
+                html += colorize_value(row[col])
+            else:
+                html += f"<td>{row[col]}</td>"
+        html += "</tr>"
+    html += "</table></body></html>"
+    return html
+
+
+# -----------------------------
+# 5️⃣ MAIN EXECUTION
+# -----------------------------
+if __name__ == '__main__':
+    config = configparser.ConfigParser(interpolation=configparser.ExtendedInterpolation())
+    config.read(sys.argv[1] + '/jaws_query.ini')
+    path_detail = config['Paths']['home_dir']
+
+    all_today_data = []
+
+    for eachsec in config.sections():
+        if eachsec in ['Paths', 'error', 'stat']:
+            continue
+
+        query_list = [f"{path_detail}/query/{sub}" for sub in config[eachsec]['query_list'].split()]
+        today_data, statfiles, errorfiles = db_establishment(
+            config[eachsec]['dbserver'],
+            config[eachsec]['dbname'],
+            query_list,
+            path_detail
+        )
+        all_today_data.extend(today_data)
+
+    if not all_today_data:
+        print("⚠️ No data fetched from database.")
+        sys.exit(0)
+
+    # Append today's data to current year CSV
+    append_to_yearly_csv(path_detail, all_today_data)
+
+    # Generate YoY report
+    final_report = generate_yoy_report(path_detail)
+
+    # Send email if report available
+    if final_report is not None:
+        html_content = generate_html_report(final_report)
+        subject = f"YoY Comparison Report - {datetime.now().strftime('%d-%b-%Y')}"
+        mailing.send(html_content, subject, "team@example.com", "noreply@example.com")
+        print("✅ YoY comparison email sent successfully.")
+    else:
+        print("Skipped email — insufficient data for comparison.")
