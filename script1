@@ -1,0 +1,232 @@
+import pandas as pd
+import datetime as dt
+from datetime import datetime
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import os
+
+def generate_yoy_comparison():
+    """
+    Generate Year-over-Year comparison for 2025 year-end data (Nov onwards)
+    comparing with previous year data
+    """
+    
+    # Sample data structure - replace with your actual data source
+    # This would typically come from your database or CSV files
+    data_2024 = [
+        ('12/1/2024', 41110), ('12/2/2024', 40906), ('12/3/2024', 36593),
+        ('12/4/2024', 42637), ('12/5/2024', 32954), ('12/6/2024', 38788),
+        ('12/7/2024', 48239), ('12/8/2024', 41200), ('12/9/2024', 35544),
+        ('12/10/2024', 37860), ('12/11/2024', 44664), ('12/12/2024', 50383),
+        ('12/13/2024', 46663), ('12/14/2024', 47354), ('12/15/2024', 55181),
+        ('12/16/2024', 56126)
+    ]
+    
+    data_2023 = [
+        ('12/1/2023', 32194), ('12/2/2023', 35090), ('12/3/2023', 104887),
+        ('12/4/2023', 35148), ('12/5/2023', 34904), ('12/6/2023', 30000),
+        ('12/7/2023', 34036), ('12/8/2023', 38219), ('12/9/2023', 36737),
+        ('12/10/2023', 45233), ('12/11/2023', 37238), ('12/12/2023', 44167),
+        ('12/13/2023', 41522), ('12/14/2023', 48351), ('12/15/2023', 49576),
+        ('12/16/2023', 41702)
+    ]
+    
+    # Convert to DataFrames
+    df_2023 = pd.DataFrame(data_2023, columns=['DATE', '2023'])
+    df_2024 = pd.DataFrame(data_2024, columns=['DATE', '2024'])
+    
+    # Merge data on dates
+    merged_df = pd.merge(df_2023, df_2024, on='DATE', how='inner')
+    
+    # Calculate YoY changes
+    merged_df['YoY Change 2024 vs 2023'] = ((merged_df['2024'] - merged_df['2023']) / merged_df['2023']) * 100
+    
+    # Format the output as requested
+    output_data = []
+    for _, row in merged_df.iterrows():
+        # Convert date format from MM/DD/YYYY to MM/DD/YY
+        date_obj = datetime.strptime(row['DATE'], '%m/%d/%Y')
+        formatted_date = date_obj.strftime('%m/%d/%y')
+        
+        output_data.append((
+            formatted_date,
+            int(row['2023']),
+            int(row['2024']),
+            round(row['YoY Change 2024 vs 2023'], 2)
+        ))
+    
+    return output_data
+
+def create_email_report(data):
+    """
+    Create HTML email report based on the comparison data
+    """
+    
+    html_content = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            .header { background-color: #2c3e50; color: white; padding: 15px; text-align: center; }
+            .table-container { margin: 20px 0; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+            th { background-color: #34495e; color: white; }
+            .positive { color: #27ae60; font-weight: bold; }
+            .negative { color: #e74c3c; font-weight: bold; }
+            .summary { background-color: #ecf0f1; padding: 15px; border-radius: 5px; margin: 20px 0; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h2>Year-over-Year Performance Report</h2>
+            <p>2024 vs 2023 Comparison - December Data</p>
+        </div>
+        
+        <div class="summary">
+            <h3>Executive Summary</h3>
+            <p><strong>Reporting Period:</strong> December 2024 vs December 2023</p>
+            <p><strong>Total Records Compared:</strong> {record_count}</p>
+            <p><strong>Average YoY Change:</strong> {avg_change}%</p>
+            <p><strong>Positive Growth Days:</strong> {positive_days}</p>
+            <p><strong>Negative Growth Days:</strong> {negative_days}</p>
+        </div>
+        
+        <div class="table-container">
+            <h3>Detailed Comparison</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>2023 Value</th>
+                        <th>2024 Value</th>
+                        <th>YoY Change (%)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {table_rows}
+                </tbody>
+            </table>
+        </div>
+    </body>
+    </html>
+    """
+    
+    # Calculate summary statistics
+    record_count = len(data)
+    yoy_changes = [item[3] for item in data]
+    avg_change = round(sum(yoy_changes) / len(yoy_changes), 2)
+    positive_days = len([change for change in yoy_changes if change > 0])
+    negative_days = len([change for change in yoy_changes if change < 0])
+    
+    # Generate table rows
+    table_rows = ""
+    for item in data:
+        date_str, val_2023, val_2024, yoy_change = item
+        change_class = "positive" if yoy_change > 0 else "negative"
+        change_sign = "+" if yoy_change > 0 else ""
+        
+        table_rows += f"""
+        <tr>
+            <td>{date_str}</td>
+            <td>{val_2023:,}</td>
+            <td>{val_2024:,}</td>
+            <td class="{change_class}">{change_sign}{yoy_change}%</td>
+        </tr>
+        """
+    
+    # Format the HTML content
+    formatted_html = html_content.format(
+        record_count=record_count,
+        avg_change=avg_change,
+        positive_days=positive_days,
+        negative_days=negative_days,
+        table_rows=table_rows
+    )
+    
+    return formatted_html
+
+def send_email_report(html_content, recipient_email, subject="YoY Performance Report"):
+    """
+    Send the email report (you'll need to configure SMTP settings)
+    """
+    try:
+        # Email configuration - update with your SMTP settings
+        smtp_server = "your_smtp_server.com"
+        smtp_port = 587
+        sender_email = "reports@yourcompany.com"
+        sender_password = "your_password"
+        
+        # Create message
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = sender_email
+        msg["To"] = recipient_email
+        
+        # Attach HTML content
+        html_part = MIMEText(html_content, "html")
+        msg.attach(html_part)
+        
+        # Send email (commented out for safety - uncomment with proper credentials)
+        # with smtplib.SMTP(smtp_server, smtp_port) as server:
+        #     server.starttls()
+        #     server.login(sender_email, sender_password)
+        #     server.send_message(msg)
+        
+        print("Email prepared successfully!")
+        print(f"Subject: {subject}")
+        print(f"Recipient: {recipient_email}")
+        
+        # Save HTML to file for testing
+        with open("yoy_report.html", "w") as f:
+            f.write(html_content)
+        print("HTML report saved as 'yoy_report.html'")
+        
+    except Exception as e:
+        print(f"Error sending email: {e}")
+
+def main():
+    """
+    Main function to generate and send YoY comparison report
+    """
+    print("Generating Year-over-Year Comparison Report...")
+    
+    # Generate comparison data
+    comparison_data = generate_yoy_comparison()
+    
+    # Print the output in requested format
+    print("\nOutput Data:")
+    print(comparison_data)
+    
+    # Create email report
+    html_report = create_email_report(comparison_data)
+    
+    # Send email (configure recipient email)
+    recipient_email = "management@yourcompany.com"  # Change to actual recipient
+    send_email_report(html_report, recipient_email)
+    
+    # Print summary
+    print(f"\nReport Summary:")
+    print(f"Total records processed: {len(comparison_data)}")
+    print(f"Date range: {comparison_data[0][0]} to {comparison_data[-1][0]}")
+    
+    return comparison_data
+
+# Alternative function for direct database integration
+def generate_yoy_from_database():
+    """
+    Alternative function that would integrate with your actual data source
+    """
+    # This would connect to your database and fetch actual data
+    # For now, using the sample data function
+    return generate_yoy_comparison()
+
+if __name__ == "__main__":
+    # Generate the report
+    result = main()
+    
+    # Print the final output in requested format
+    print("\nFinal Output:")
+    print(result)
