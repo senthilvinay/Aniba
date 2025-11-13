@@ -38,24 +38,41 @@ def db_establishment(dbserver, dbname, query_list, path_detail):
 # -----------------------------
 # 2️⃣ APPEND DAILY RESULT TO YEARLY CSV
 # -----------------------------
+import os
+import csv
+import pandas as pd
+from datetime import datetime
+
 def append_to_yearly_csv(path_detail, today_data):
-    current_year = datetime.now().year
+    current_year = datetime.now().year  # e.g., 2025
     yearly_file = f"{path_detail}/data_{current_year}.csv"
     os.makedirs(path_detail, exist_ok=True)
+
+    date_col = f"DATE_{current_year}"
+    value_col = f"{current_year}"
 
     # Avoid duplicate entries
     existing_dates = set()
     if os.path.exists(yearly_file):
         df_existing = pd.read_csv(yearly_file)
-        existing_dates = set(df_existing["DATE"].astype(str))
+        if date_col in df_existing.columns:
+            existing_dates = set(df_existing[date_col].astype(str))
+    else:
+        # Create file and write header
+        with open(yearly_file, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([date_col, value_col])
 
+    # Append new rows
     with open(yearly_file, 'a', newline='') as f:
         writer = csv.writer(f)
         for date, value in today_data:
             if str(date) not in existing_dates:
                 writer.writerow([date, value])
+
     print(f"Data appended to {yearly_file}")
     return yearly_file
+
 
 
 # -----------------------------
