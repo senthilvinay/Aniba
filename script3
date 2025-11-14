@@ -1,48 +1,93 @@
 import os
 import pandas as pd
+import numpy as np
 
 def generate_yoy_report(path_detail):
-    # Define years
     years = [2023, 2024, 2025]
     data = {}
 
-    # Load all year CSVs
+    # Load yearly files (supporting TAB or COMMA)
     for yr in years:
         file = f"{path_detail}/data_{yr}.csv"
         if os.path.exists(file):
-            df = pd.read_csv(file, header=None, names=[f"DATE_{yr}", str(yr)])
-            df[str(yr)] = pd.to_numeric(df[str(yr)], errors="coerce")
+            df = pd.read_csv(
+                file,
+                sep=r"[\t,]",        # auto handle tab or comma
+                engine="python",
+                header=None,
+                names=[f"DATE_{yr}", str(yr)]
+            )
             data[yr] = df
         else:
             print(f"⚠️ Missing file: {file}")
             return None
 
-    # Merge side-by-side
+    # Merge all 3 years side-by-side by row position
     merged = pd.concat([data[2023], data[2024], data[2025]], axis=1)
 
-    # Calculate YoY %
-    merged["YoY 2025 vs 2023"] = ((merged["2025"] - merged["2023"]) / merged["2023"].replace(0, pd.NA)) * 100
-    merged["YoY 2025 vs 2024"] = ((merged["2025"] - merged["2024"]) / merged["2024"].replace(0, pd.NA)) * 100
+    # Replace NaN with 0 for calculation
+    merged = merged.replace({np.nan: 0})
 
-    # Round and format with emojis
-    def fmt(v):
-        if pd.isna(v):
-            return "-"
-        if v > 1000:
-            return f"{v:.1f}% 🚀"
-        elif v > 0:
-            return f"+{v:.1f}% 📈"
-        elif v < 0:
-            return f"{v:.1f}% 📉"
+    # Convert YoY columns to numeric
+    merged["2023"] = pd.to_numeric(merged["2023"], errors="coerce").fillna(0)
+    merged["2024"] = pd.to_numeric(merged["2024"], errors="coerce").fillna(0)
+    merged["2025"] = pd.to_numeric(merged["2025"], errors="coerce").fillna(0)
+
+    # -------------------------------
+    # Calculate YoY % changes
+    # -------------------------------
+
+    # Avoid division by zero
+    merged["YoY_2025_vs_2023"] = np.where(
+        merged["2023"] == 0,
+        0,
+        ((merged["2025"] - merged["2023"]) / merged["2023"]) * 100
+    )
+
+    merged["YoY_2025_vs_2024"] = np.where(
+        merged["2024"] == 0,
+        0,
+        ((merged["2025"] - merged["2024"]) / merged["2024"]) * 100
+    )
+
+    # Round % values
+    merged["YoY_2025_vs_2023"] = merged["YoY_2025_vs_2023"].round(1)
+    merged["YoY_2025_vs_2024"] = merged["YoY_2025_vs_2024"].round(1)
+
+    # -------------------------------
+    # Add 📈 / 📉 / 🚀 Icons
+    # -------------------------------
+
+    def add_icon(val):
+        if val >= 500:
+            return f"{val}% 🚀"
+        elif val > 0:
+            return f"{val}% 📈"
+        elif val < 0:
+            return f"{val}% 📉"
         else:
-            return "0.0%"
+            return f"{val}%"
 
-    merged["YoY 2025 vs 2023"] = merged["YoY 2025 vs 2023"].apply(fmt)
-    merged["YoY 2025 vs 2024"] = merged["YoY 2025 vs 2024"].apply(fmt)
+    merged["YoY_2025_vs_2023"] = merged["YoY_2025_vs_2023"].apply(add_icon)
+    merged["YoY_2025_vs_2024"] = merged["YoY_2025_vs_2024"].apply(add_icon)
 
-    # Save to CSV
+    # -------------------------------
+    # Re-order columns as requested
+    # -------------------------------
+
+    final = merged[
+        [
+            "DATE_2023", "2023",
+            "DATE_2024", "2024",
+            "DATE_2025", "2025",
+            "YoY_2025_vs_2023",
+            "YoY_2025_vs_2024"
+        ]
+    ]
+
+    # Save final file
     output_file = f"{path_detail}/YoY_Comparison_Report.csv"
-    merged.to_csv(output_file, index=False)
+    final.to_csv(output_file, index=False)
 
-    print(f"✅ YoY comparison report created successfully at: {output_file}")
-    return merged
+    print(f"✅ YoY comparison report created successfully: {output_file}")
+    return final
