@@ -1,93 +1,402 @@
-import os
-import pandas as pd
-import numpy as np
-
-def generate_yoy_report(path_detail):
-    years = [2023, 2024, 2025]
-    data = {}
-
-    # Load yearly files (supporting TAB or COMMA)
-    for yr in years:
-        file = f"{path_detail}/data_{yr}.csv"
-        if os.path.exists(file):
-            df = pd.read_csv(
-                file,
-                sep=r"[\t,]",        # auto handle tab or comma
-                engine="python",
-                header=None,
-                names=[f"DATE_{yr}", str(yr)]
-            )
-            data[yr] = df
-        else:
-            print(f"⚠️ Missing file: {file}")
-            return None
-
-    # Merge all 3 years side-by-side by row position
-    merged = pd.concat([data[2023], data[2024], data[2025]], axis=1)
-
-    # Replace NaN with 0 for calculation
-    merged = merged.replace({np.nan: 0})
-
-    # Convert YoY columns to numeric
-    merged["2023"] = pd.to_numeric(merged["2023"], errors="coerce").fillna(0)
-    merged["2024"] = pd.to_numeric(merged["2024"], errors="coerce").fillna(0)
-    merged["2025"] = pd.to_numeric(merged["2025"], errors="coerce").fillna(0)
-
-    # -------------------------------
-    # Calculate YoY % changes
-    # -------------------------------
-
-    # Avoid division by zero
-    merged["YoY_2025_vs_2023"] = np.where(
-        merged["2023"] == 0,
-        0,
-        ((merged["2025"] - merged["2023"]) / merged["2023"]) * 100
-    )
-
-    merged["YoY_2025_vs_2024"] = np.where(
-        merged["2024"] == 0,
-        0,
-        ((merged["2025"] - merged["2024"]) / merged["2024"]) * 100
-    )
-
-    # Round % values
-    merged["YoY_2025_vs_2023"] = merged["YoY_2025_vs_2023"].round(1)
-    merged["YoY_2025_vs_2024"] = merged["YoY_2025_vs_2024"].round(1)
-
-    # -------------------------------
-    # Add 📈 / 📉 / 🚀 Icons
-    # -------------------------------
-
-    def add_icon(val):
-        if val >= 500:
-            return f"{val}% 🚀"
-        elif val > 0:
-            return f"{val}% 📈"
-        elif val < 0:
-            return f"{val}% 📉"
-        else:
-            return f"{val}%"
-
-    merged["YoY_2025_vs_2023"] = merged["YoY_2025_vs_2023"].apply(add_icon)
-    merged["YoY_2025_vs_2024"] = merged["YoY_2025_vs_2024"].apply(add_icon)
-
-    # -------------------------------
-    # Re-order columns as requested
-    # -------------------------------
-
-    final = merged[
-        [
-            "DATE_2023", "2023",
-            "DATE_2024", "2024",
-            "DATE_2025", "2025",
-            "YoY_2025_vs_2023",
-            "YoY_2025_vs_2024"
-        ]
-    ]
-
-    # Save final file
-    output_file = f"{path_detail}/YoY_Comparison_Report.csv"
-    final.to_csv(output_file, index=False)
-
-    print(f"✅ YoY comparison report created successfully: {output_file}")
-    return final
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Darwin Money Movement Stats</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .container {
+            max-width: 1200px;
+            width: 100%;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #7f8c8d;
+            margin-bottom: 30px;
+            font-size: 1.1rem;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 14px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
+        }
+        
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px 15px;
+            text-align: center;
+        }
+        
+        th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        /* Color coding for each year */
+        .year-2024 {
+            background-color: rgba(52, 152, 219, 0.15);
+            border-left: 3px solid #3498db;
+        }
+        
+        .year-2023 {
+            background-color: rgba(46, 204, 113, 0.15);
+            border-left: 3px solid #2ecc71;
+        }
+        
+        .year-2022 {
+            background-color: rgba(155, 89, 182, 0.15);
+            border-left: 3px solid #9b59b6;
+        }
+        
+        .change-positive {
+            color: #27ae60;
+            font-weight: 600;
+        }
+        
+        .change-negative {
+            color: #e74c3c;
+            font-weight: 600;
+        }
+        
+        tbody tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        
+        tbody tr:hover {
+            background-color: #f1f8ff;
+        }
+        
+        .footer {
+            margin-top: 30px;
+            padding: 15px;
+            background-color: #2c3e50;
+            color: white;
+            border-radius: 5px;
+            width: 100%;
+            text-align: center;
+        }
+        
+        .legend {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+        
+        .legend-2024 {
+            background-color: rgba(52, 152, 219, 0.15);
+            border-left: 3px solid #3498db;
+        }
+        
+        .legend-2023 {
+            background-color: rgba(46, 204, 113, 0.15);
+            border-left: 3px solid #2ecc71;
+        }
+        
+        .legend-2022 {
+            background-color: rgba(155, 89, 182, 0.15);
+            border-left: 3px solid #9b59b6;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                overflow-x: auto;
+            }
+            
+            table {
+                font-size: 12px;
+            }
+            
+            th, td {
+                padding: 8px 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Darwin Money Movement Statistics</h1>
+    <p class="subtitle">Yearly Comparison for December Business Days</p>
+    
+    <div class="legend">
+        <div class="legend-item">
+            <div class="legend-color legend-2024"></div>
+            <span>December 2024</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color legend-2023"></div>
+            <span>December 2023</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color legend-2022"></div>
+            <span>December 2022</span>
+        </div>
+    </div>
+    
+    <div class="container">
+        <table>
+            <thead>
+                <tr>
+                    <th rowspan="3">Business Day</th>
+                    <th colspan="2" class="year-2024">Year - DEC 2024</th>
+                    <th colspan="4" class="year-2023">Year - DEC 2023</th>
+                    <th colspan="4" class="year-2022">Year - DEC 2022</th>
+                </tr>
+                <tr>
+                    <th colspan="2" class="year-2024">Darwin(Legacy) and New Money Mvt.</th>
+                    <th colspan="2" class="year-2023">Darwin(Legacy) and New Money Mvt.</th>
+                    <th rowspan="2" class="year-2023">YoY Change<br>(2024 vs 2023)</th>
+                    <th colspan="2" class="year-2022">Darwin(Legacy) and New Money Mvt.</th>
+                    <th rowspan="2" class="year-2022">YoY Change<br>(2024 vs 2022)</th>
+                </tr>
+                <tr>
+                    <th class="year-2024">JOURNALS COUNT</th>
+                    <th class="year-2024">TRANSACTION COUNT</th>
+                    <th class="year-2023">JOURNALS COUNT</th>
+                    <th class="year-2023">TRANSACTION COUNT</th>
+                    <th class="year-2022">JOURNALS COUNT</th>
+                    <th class="year-2022">TRANSACTION COUNT</th>
+                </tr>
+                <tr>
+                    <th>December (2024)</th>
+                    <th class="year-2024"></th>
+                    <th class="year-2024"></th>
+                    <th class="year-2023"></th>
+                    <th class="year-2023"></th>
+                    <th class="year-2023"></th>
+                    <th class="year-2022"></th>
+                    <th class="year-2022"></th>
+                    <th class="year-2022"></th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>1st</td>
+                    <td class="year-2024">19,887</td>
+                    <td class="year-2024">2,063</td>
+                    <td class="year-2023">20,949</td>
+                    <td class="year-2023">1,934</td>
+                    <td class="year-2023 change-negative">-5%</td>
+                    <td class="year-2022">17,068</td>
+                    <td class="year-2022">1,905</td>
+                    <td class="year-2022 change-positive">17%</td>
+                </tr>
+                <tr>
+                    <td>2nd</td>
+                    <td class="year-2024">23,309</td>
+                    <td class="year-2024">2,595</td>
+                    <td class="year-2023">19,148</td>
+                    <td class="year-2023">2,126</td>
+                    <td class="year-2023 change-positive">22%</td>
+                    <td class="year-2022">18,708</td>
+                    <td class="year-2022">1,824</td>
+                    <td class="year-2022 change-positive">25%</td>
+                </tr>
+                <tr>
+                    <td>3rd</td>
+                    <td class="year-2024">23,873</td>
+                    <td class="year-2024">2,909</td>
+                    <td class="year-2023">20,944</td>
+                    <td class="year-2023">2,478</td>
+                    <td class="year-2023 change-positive">14%</td>
+                    <td class="year-2022">18,251</td>
+                    <td class="year-2022">1,877</td>
+                    <td class="year-2022 change-positive">31%</td>
+                </tr>
+                <tr>
+                    <td>4th</td>
+                    <td class="year-2024">26,538</td>
+                    <td class="year-2024">2,903</td>
+                    <td class="year-2023">24,124</td>
+                    <td class="year-2023">2,419</td>
+                    <td class="year-2023 change-positive">10%</td>
+                    <td class="year-2022">21,225</td>
+                    <td class="year-2022">2,151</td>
+                    <td class="year-2022 change-positive">25%</td>
+                </tr>
+                <tr>
+                    <td>5th</td>
+                    <td class="year-2024">21,880</td>
+                    <td class="year-2024">2,457</td>
+                    <td class="year-2023">25,493</td>
+                    <td class="year-2023">2,353</td>
+                    <td class="year-2023 change-negative">-14%</td>
+                    <td class="year-2022">19,337</td>
+                    <td class="year-2022">2,045</td>
+                    <td class="year-2022 change-positive">13%</td>
+                </tr>
+                <tr>
+                    <td>6th</td>
+                    <td class="year-2024">26,407</td>
+                    <td class="year-2024">2,644</td>
+                    <td class="year-2023">20,852</td>
+                    <td class="year-2023">2,104</td>
+                    <td class="year-2023 change-positive">27%</td>
+                    <td class="year-2022">22,427</td>
+                    <td class="year-2022">2,141</td>
+                    <td class="year-2022 change-positive">18%</td>
+                </tr>
+                <tr>
+                    <td>7th</td>
+                    <td class="year-2024"></td>
+                    <td class="year-2024"></td>
+                    <td class="year-2023">23,943</td>
+                    <td class="year-2023">2,286</td>
+                    <td class="year-2023"></td>
+                    <td class="year-2022">17,530</td>
+                    <td class="year-2022">1,799</td>
+                    <td class="year-2022"></td>
+                </tr>
+                <tr>
+                    <td>8th</td>
+                    <td class="year-2024"></td>
+                    <td class="year-2024"></td>
+                    <td class="year-2023">27,830</td>
+                    <td class="year-2023">2,714</td>
+                    <td class="year-2023"></td>
+                    <td class="year-2022">20,061</td>
+                    <td class="year-2022">2,152</td>
+                    <td class="year-2022"></td>
+                </tr>
+                <tr>
+                    <td>9th</td>
+                    <td class="year-2024"></td>
+                    <td class="year-2024"></td>
+                    <td class="year-2023">24,690</td>
+                    <td class="year-2023">2,533</td>
+                    <td class="year-2023"></td>
+                    <td class="year-2022">22,169</td>
+                    <td class="year-2022">2,552</td>
+                    <td class="year-2022"></td>
+                </tr>
+                <tr>
+                    <td>10th</td>
+                    <td class="year-2024"></td>
+                    <td class="year-2024"></td>
+                    <td class="year-2023">26,397</td>
+                    <td class="year-2023">2,669</td>
+                    <td class="year-2023"></td>
+                    <td class="year-2022">23,268</td>
+                    <td class="year-2022">2,561</td>
+                    <td class="year-2022"></td>
+                </tr>
+                <tr>
+                    <td>11th</td>
+                    <td class="year-2024"></td>
+                    <td class="year-2024"></td>
+                    <td class="year-2023">22,190</td>
+                    <td class="year-2023">2,477</td>
+                    <td class="year-2023"></td>
+                    <td class="year-2022">23,706</td>
+                    <td class="year-2022">2,321</td>
+                    <td class="year-2022"></td>
+                </tr>
+                <tr>
+                    <td>12th</td>
+                    <td class="year-2024"></td>
+                    <td class="year-2024"></td>
+                    <td class="year-2023">28,241</td>
+                    <td class="year-2023">3,844</td>
+                    <td class="year-2023"></td>
+                    <td class="year-2022">22,500</td>
+                    <td class="year-2022">2,162</td>
+                    <td class="year-2022"></td>
+                </tr>
+                <tr>
+                    <td>13th</td>
+                    <td class="year-2024"></td>
+                    <td class="year-2024"></td>
+                    <td class="year-2023">27,311</td>
+                    <td class="year-2023">3,142</td>
+                    <td class="year-2023"></td>
+                    <td class="year-2022">24,119</td>
+                    <td class="year-2022">2,458</td>
+                    <td class="year-2022"></td>
+                </tr>
+                <tr>
+                    <td>14th</td>
+                    <td class="year-2024"></td>
+                    <td class="year-2024"></td>
+                    <td class="year-2023">31,835</td>
+                    <td class="year-2023">3,110</td>
+                    <td class="year-2023"></td>
+                    <td class="year-2022">32,975</td>
+                    <td class="year-2022">2,687</td>
+                    <td class="year-2022"></td>
+                </tr>
+                <tr>
+                    <td>15th</td>
+                    <td class="year-2024"></td>
+                    <td class="year-2024"></td>
+                    <td class="year-2023">28,768</td>
+                    <td class="year-2023">3,060</td>
+                    <td class="year-2023"></td>
+                    <td class="year-2022">27,308</td>
+                    <td class="year-2022">2,824</td>
+                    <td class="year-2022"></td>
+                </tr>
+                <tr>
+                    <td>16th</td>
+                    <td class="year-2024"></td>
+                    <td class="year-2024"></td>
+                    <td class="year-2023">30,423</td>
+                    <td class="year-2023">3,731</td>
+                    <td class="year-2023"></td>
+                    <td class="year-2022">30,483</td>
+                    <td class="year-2022">2,651</td>
+                    <td class="year-2022"></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="footer">
+        <p><strong>JAVIS Darwin-New Money Mov Stats</strong> | Ready Accessibility: Investigate</p>
+    </div>
+</body>
+</html>
